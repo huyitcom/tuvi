@@ -181,11 +181,14 @@ export default function App() {
         throw new Error("Server TTS unavailable");
       }
 
-      const data = await response.json();
-      if (!data.audioSrc) {
+      // We now receive a binary audio stream (audio/mpeg)
+      const blob = await response.blob();
+      if (blob.size === 0) {
         throw new Error("Empty audio returned");
       }
-      setAudioSrc(data.audioSrc);
+      
+      const audioUrl = URL.createObjectURL(blob);
+      setAudioSrc(audioUrl);
     } catch (err: any) {
       console.warn("Server TTS failed, activating Web Speech Synthesis fallback:", err);
       

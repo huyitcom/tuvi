@@ -26,9 +26,67 @@ var import_express = __toESM(require("express"), 1);
 var import_path = __toESM(require("path"), 1);
 var import_vite = require("vite");
 var import_genai = require("@google/genai");
-var import_edge_tts_node = require("edge-tts-node");
+var import_crypto = __toESM(require("crypto"), 1);
+var import_ws = __toESM(require("ws"), 1);
 var import_dotenv = __toESM(require("dotenv"), 1);
 import_dotenv.default.config();
+async function generateEdgeTts(text, voice = "vi-VN-NamMinhNeural") {
+  const TRUSTED_CLIENT_TOKEN = "6A5AA1D4EAFF4E9FB37E23D68491D6F4";
+  const WINDOWS_FILE_TIME_EPOCH = 11644473600n;
+  const ticks = BigInt(Math.floor(Date.now() / 1e3 + Number(WINDOWS_FILE_TIME_EPOCH))) * 10000000n;
+  const roundedTicks = ticks - ticks % 3000000000n;
+  const hash = import_crypto.default.createHash("sha256").update(`${roundedTicks}${TRUSTED_CLIENT_TOKEN}`, "ascii").digest("hex").toUpperCase();
+  const CHROMIUM_FULL_VERSION = "143.0.3650.75";
+  const wsUrl = `wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=${TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC=${hash}&Sec-MS-GEC-Version=1-${CHROMIUM_FULL_VERSION}`;
+  return new Promise((resolve, reject) => {
+    const ws = new import_ws.default(wsUrl, {
+      origin: "chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold",
+      headers: {
+        "User-Agent": `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROMIUM_FULL_VERSION.split(".")[0]}.0.0.0 Safari/537.36 Edg/${CHROMIUM_FULL_VERSION.split(".")[0]}.0.0.0`
+      }
+    });
+    const audioChunks = [];
+    let timeOut = setTimeout(() => {
+      ws.close();
+      reject(new Error("TTS Timeout"));
+    }, 3e4);
+    ws.on("open", () => {
+      ws.send(`Content-Type:application/json; charset=utf-8\r
+Path:speech.config\r
+\r
+{"context":{"synthesis":{"audio":{"metadataoptions":{"sentenceBoundaryEnabled":"false","wordBoundaryEnabled":"true"},"outputFormat":"audio-24khz-48kbitrate-mono-mp3"}}}}`);
+      const reqId = import_crypto.default.randomBytes(16).toString("hex");
+      const escapeXml = (s) => s.replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&apos;" })[c] || c);
+      const ssml = `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="vi-VN"><voice name="${voice}"><prosody rate="-5%" pitch="-5%">${escapeXml(text)}</prosody></voice></speak>`;
+      ws.send(`X-RequestId:${reqId}\r
+Content-Type:application/ssml+xml\r
+Path:ssml\r
+\r
+${ssml}`);
+    });
+    ws.on("message", (data, isBinary) => {
+      if (isBinary) {
+        const sep = "Path:audio\r\n";
+        const idx = data.indexOf(sep);
+        if (idx !== -1) {
+          const audio = data.subarray(idx + sep.length);
+          if (audio.length > 0) audioChunks.push(audio);
+        }
+      } else {
+        const msg = data.toString();
+        if (msg.includes("Path:turn.end")) {
+          clearTimeout(timeOut);
+          ws.close();
+          resolve(Buffer.concat(audioChunks));
+        }
+      }
+    });
+    ws.on("error", (err) => {
+      clearTimeout(timeOut);
+      reject(err);
+    });
+  });
+}
 async function startServer() {
   const app = (0, import_express.default)();
   const PORT = 3e3;
@@ -242,32 +300,11 @@ Xin th\u1EA7y h\xE3y l\u1EADp l\xE1 s\u1ED1 t\u1EED vi d\u1EF1a tr\xEAn th\xF4ng
       const truncatedText = cleanText.substring(0, 5e3);
       console.log(`[TTS] Trying Microsoft Edge TTS (Southern Older Male Voice). Length: ${truncatedText.length} characters`);
       try {
-        const tts = new import_edge_tts_node.MsEdgeTTS({ enableLogger: false });
-        await tts.setMetadata("vi-VN-NamMinhNeural", import_edge_tts_node.OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
-        const stream = tts.toStream(truncatedText, {
-          pitch: "-8%",
-          // Slightly lowered to sound like a warm, deep, elderly wise man
-          rate: "-10%"
-          // Slowed down for old-wise-fortune-teller delivery vibe
-        });
-        const chunks = [];
-        await new Promise((resolve, reject) => {
-          stream.on("data", (chunk) => {
-            chunks.push(chunk);
-          });
-          stream.on("end", () => {
-            resolve();
-          });
-          stream.on("error", (err) => {
-            reject(err);
-          });
-        });
-        tts.close();
-        const combinedBuffer = Buffer.concat(chunks);
+        const combinedBuffer = await generateEdgeTts(truncatedText);
         if (combinedBuffer.length > 0) {
-          const base64Audio = combinedBuffer.toString("base64");
           console.log(`[Edge TTS Success] Compiled older Southern Male audio. Total bytes: ${combinedBuffer.length}`);
-          return res.json({ audioSrc: `data:audio/mp3;base64,${base64Audio}` });
+          res.setHeader("Content-Type", "audio/mpeg");
+          return res.status(200).send(combinedBuffer);
         } else {
           throw new Error("No audio bytes received from Edge TTS");
         }
@@ -340,9 +377,9 @@ Xin th\u1EA7y h\xE3y l\u1EADp l\xE1 s\u1ED1 t\u1EED vi d\u1EF1a tr\xEAn th\xF4ng
           audioBuffers.push(...results);
         }
         const combinedBuffer = Buffer.concat(audioBuffers);
-        const base64Audio = combinedBuffer.toString("base64");
         console.log(`[Google TTS Fallback Success] Compiled audio. Chunks: ${chunks.length}. Total bytes: ${combinedBuffer.length}`);
-        return res.json({ audioSrc: `data:audio/mp3;base64,${base64Audio}` });
+        res.setHeader("Content-Type", "audio/mpeg");
+        return res.status(200).send(combinedBuffer);
       }
     } catch (err) {
       console.error("Audio generation completely failed:", err);

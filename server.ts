@@ -2,10 +2,67 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
-import { MsEdgeTTS, OUTPUT_FORMAT } from "edge-tts-node";
+import crypto from "crypto";
+import WebSocket from "ws";
 import dotenv from "dotenv";
 
 dotenv.config();
+
+async function generateEdgeTts(text: string, voice = 'vi-VN-NamMinhNeural'): Promise<Buffer> {
+    const TRUSTED_CLIENT_TOKEN = '6A5AA1D4EAFF4E9FB37E23D68491D6F4';
+    const WINDOWS_FILE_TIME_EPOCH = 11644473600n;
+    const ticks = BigInt(Math.floor((Date.now() / 1000) + Number(WINDOWS_FILE_TIME_EPOCH))) * 10000000n;
+    const roundedTicks = ticks - (ticks % 3000000000n);
+    const hash = crypto.createHash('sha256').update(`${roundedTicks}${TRUSTED_CLIENT_TOKEN}`, 'ascii').digest('hex').toUpperCase();
+
+    const CHROMIUM_FULL_VERSION = '143.0.3650.75';
+    const wsUrl = `wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=${TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC=${hash}&Sec-MS-GEC-Version=1-${CHROMIUM_FULL_VERSION}`;
+
+    return new Promise((resolve, reject) => {
+        const ws = new WebSocket(wsUrl, {
+            origin: 'chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold',
+            headers: {
+                'User-Agent': `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROMIUM_FULL_VERSION.split('.')[0]}.0.0.0 Safari/537.36 Edg/${CHROMIUM_FULL_VERSION.split('.')[0]}.0.0.0`
+            }
+        });
+
+        const audioChunks: Buffer[] = [];
+        let timeOut = setTimeout(() => { ws.close(); reject(new Error('TTS Timeout')); }, 30000);
+
+        ws.on('open', () => {
+            ws.send(`Content-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n{"context":{"synthesis":{"audio":{"metadataoptions":{"sentenceBoundaryEnabled":"false","wordBoundaryEnabled":"true"},"outputFormat":"audio-24khz-48kbitrate-mono-mp3"}}}}`);
+            
+            const reqId = crypto.randomBytes(16).toString('hex');
+            const escapeXml = (s: string) => s.replace(/[<>&"']/g, c => ({'<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;'}[c] || c));
+            const ssml = `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="vi-VN"><voice name="${voice}"><prosody rate="-5%" pitch="-5%">${escapeXml(text)}</prosody></voice></speak>`;
+            
+            ws.send(`X-RequestId:${reqId}\r\nContent-Type:application/ssml+xml\r\nPath:ssml\r\n\r\n${ssml}`);
+        });
+
+        ws.on('message', (data: Buffer, isBinary: boolean) => {
+            if (isBinary) {
+                const sep = 'Path:audio\r\n';
+                const idx = data.indexOf(sep);
+                if (idx !== -1) {
+                    const audio = data.subarray(idx + sep.length);
+                    if (audio.length > 0) audioChunks.push(audio);
+                }
+            } else {
+                const msg = data.toString();
+                if (msg.includes('Path:turn.end')) {
+                    clearTimeout(timeOut);
+                    ws.close();
+                    resolve(Buffer.concat(audioChunks));
+                }
+            }
+        });
+
+        ws.on('error', (err: any) => {
+            clearTimeout(timeOut);
+            reject(err);
+        });
+    });
+}
 
 async function startServer() {
   const app = express();
@@ -266,34 +323,12 @@ Xin thầy hãy lập lá số tử vi dựa trên thông tin này và luận gi
       console.log(`[TTS] Trying Microsoft Edge TTS (Southern Older Male Voice). Length: ${truncatedText.length} characters`);
 
       try {
-        const tts = new MsEdgeTTS({ enableLogger: false });
-        // Use AUDIO_24KHZ_48KBITRATE_MONO_MP3
-        await tts.setMetadata("vi-VN-NamMinhNeural", OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
+        const combinedBuffer = await generateEdgeTts(truncatedText);
         
-        const stream = tts.toStream(truncatedText, {
-          pitch: "-8%",  // Slightly lowered to sound like a warm, deep, elderly wise man
-          rate: "-10%",  // Slowed down for old-wise-fortune-teller delivery vibe
-        });
-
-        const chunks: Buffer[] = [];
-        await new Promise<void>((resolve, reject) => {
-          stream.on("data", (chunk: Buffer) => {
-            chunks.push(chunk);
-          });
-          stream.on("end", () => {
-            resolve();
-          });
-          stream.on("error", (err) => {
-            reject(err);
-          });
-        });
-
-        tts.close();
-        const combinedBuffer = Buffer.concat(chunks);
         if (combinedBuffer.length > 0) {
-          const base64Audio = combinedBuffer.toString("base64");
           console.log(`[Edge TTS Success] Compiled older Southern Male audio. Total bytes: ${combinedBuffer.length}`);
-          return res.json({ audioSrc: `data:audio/mp3;base64,${base64Audio}` });
+          res.setHeader('Content-Type', 'audio/mpeg');
+          return res.status(200).send(combinedBuffer);
         } else {
           throw new Error("No audio bytes received from Edge TTS");
         }
@@ -376,10 +411,9 @@ Xin thầy hãy lập lá số tử vi dựa trên thông tin này và luận gi
         }
 
         const combinedBuffer = Buffer.concat(audioBuffers);
-        const base64Audio = combinedBuffer.toString("base64");
-
         console.log(`[Google TTS Fallback Success] Compiled audio. Chunks: ${chunks.length}. Total bytes: ${combinedBuffer.length}`);
-        return res.json({ audioSrc: `data:audio/mp3;base64,${base64Audio}` });
+        res.setHeader('Content-Type', 'audio/mpeg');
+        return res.status(200).send(combinedBuffer);
       }
     } catch (err: any) {
       console.error("Audio generation completely failed:", err);
