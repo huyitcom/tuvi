@@ -26,67 +26,9 @@ var import_express = __toESM(require("express"), 1);
 var import_path = __toESM(require("path"), 1);
 var import_vite = require("vite");
 var import_genai = require("@google/genai");
-var import_crypto = __toESM(require("crypto"), 1);
 var import_ws = __toESM(require("ws"), 1);
 var import_dotenv = __toESM(require("dotenv"), 1);
 import_dotenv.default.config();
-async function generateEdgeTts(text, voice = "vi-VN-NamMinhNeural") {
-  const TRUSTED_CLIENT_TOKEN = "6A5AA1D4EAFF4E9FB37E23D68491D6F4";
-  const WINDOWS_FILE_TIME_EPOCH = 11644473600n;
-  const ticks = BigInt(Math.floor(Date.now() / 1e3 + Number(WINDOWS_FILE_TIME_EPOCH))) * 10000000n;
-  const roundedTicks = ticks - ticks % 3000000000n;
-  const hash = import_crypto.default.createHash("sha256").update(`${roundedTicks}${TRUSTED_CLIENT_TOKEN}`, "ascii").digest("hex").toUpperCase();
-  const CHROMIUM_FULL_VERSION = "143.0.3650.75";
-  const wsUrl = `wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=${TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC=${hash}&Sec-MS-GEC-Version=1-${CHROMIUM_FULL_VERSION}`;
-  return new Promise((resolve, reject) => {
-    const ws = new import_ws.default(wsUrl, {
-      origin: "chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold",
-      headers: {
-        "User-Agent": `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROMIUM_FULL_VERSION.split(".")[0]}.0.0.0 Safari/537.36 Edg/${CHROMIUM_FULL_VERSION.split(".")[0]}.0.0.0`
-      }
-    });
-    const audioChunks = [];
-    let timeOut = setTimeout(() => {
-      ws.close();
-      reject(new Error("TTS Timeout"));
-    }, 3e4);
-    ws.on("open", () => {
-      ws.send(`Content-Type:application/json; charset=utf-8\r
-Path:speech.config\r
-\r
-{"context":{"synthesis":{"audio":{"metadataoptions":{"sentenceBoundaryEnabled":"false","wordBoundaryEnabled":"true"},"outputFormat":"audio-24khz-48kbitrate-mono-mp3"}}}}`);
-      const reqId = import_crypto.default.randomBytes(16).toString("hex");
-      const escapeXml = (s) => s.replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&apos;" })[c] || c);
-      const ssml = `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="vi-VN"><voice name="${voice}"><prosody rate="-5%" pitch="-5%">${escapeXml(text)}</prosody></voice></speak>`;
-      ws.send(`X-RequestId:${reqId}\r
-Content-Type:application/ssml+xml\r
-Path:ssml\r
-\r
-${ssml}`);
-    });
-    ws.on("message", (data, isBinary) => {
-      if (isBinary) {
-        const sep = "Path:audio\r\n";
-        const idx = data.indexOf(sep);
-        if (idx !== -1) {
-          const audio = data.subarray(idx + sep.length);
-          if (audio.length > 0) audioChunks.push(audio);
-        }
-      } else {
-        const msg = data.toString();
-        if (msg.includes("Path:turn.end")) {
-          clearTimeout(timeOut);
-          ws.close();
-          resolve(Buffer.concat(audioChunks));
-        }
-      }
-    });
-    ws.on("error", (err) => {
-      clearTimeout(timeOut);
-      reject(err);
-    });
-  });
-}
 async function startServer() {
   const app = (0, import_express.default)();
   const PORT = 3e3;
@@ -298,88 +240,123 @@ Xin th\u1EA7y h\xE3y l\u1EADp l\xE1 s\u1ED1 t\u1EED vi d\u1EF1a tr\xEAn th\xF4ng
       }
       const cleanText = text.replace(/[#*`_:-]/g, " ").replace(/\s+/g, " ").trim();
       const truncatedText = cleanText.substring(0, 5e3);
-      console.log(`[TTS] Trying Microsoft Edge TTS (Southern Older Male Voice). Length: ${truncatedText.length} characters`);
-      try {
-        const combinedBuffer = await generateEdgeTts(truncatedText);
-        if (combinedBuffer.length > 0) {
-          console.log(`[Edge TTS Success] Compiled older Southern Male audio. Total bytes: ${combinedBuffer.length}`);
-          res.setHeader("Content-Type", "audio/mpeg");
-          return res.status(200).send(combinedBuffer);
-        } else {
-          throw new Error("No audio bytes received from Edge TTS");
+      const API_KEY = process.env.VIVIBE_API_KEY || "sk_live_IO2D0o6QJ4bBs4ecuy0piDkB4kpl6D6A";
+      const VOICE_ID = "1mFqK2ZPpy9FUCBv4D8Leu";
+      const ENDPOINT = "https://api.lucylab.io/json-rpc";
+      const splitTextIntoChunks = (txt, maxLength = 180) => {
+        const sentences = txt.split(/([.,!?;:\n]+)/);
+        const chunks = [];
+        let currentChunk = "";
+        for (let i = 0; i < sentences.length; i++) {
+          let part = sentences[i];
+          if (!part) continue;
+          if (i + 1 < sentences.length && sentences[i + 1].match(/^[.,!?;:\n]+$/)) {
+            part += sentences[i + 1];
+            i++;
+          }
+          if (currentChunk.length + part.length + 1 > maxLength) {
+            if (currentChunk.trim()) chunks.push(currentChunk.trim());
+            currentChunk = part;
+          } else {
+            currentChunk += (currentChunk ? " " : "") + part;
+          }
         }
-      } catch (edgeErr) {
-        console.warn("[Edge TTS Failed, falling back to Google Translate TTS]", edgeErr?.message || edgeErr);
-        const splitTextIntoChunks = (txt, maxLength = 180) => {
-          const sentences = txt.split(/([.,!?;:\n]+)/);
-          const chunks2 = [];
-          let currentChunk = "";
-          for (let i = 0; i < sentences.length; i++) {
-            let part = sentences[i];
-            if (!part) continue;
-            if (i + 1 < sentences.length && sentences[i + 1].match(/^[.,!?;:\n]+$/)) {
-              part += sentences[i + 1];
-              i++;
+        if (currentChunk.trim()) chunks.push(currentChunk.trim());
+        return chunks;
+      };
+      try {
+        console.log(`[Vivibe API] G\u1EEDi y\xEAu c\u1EA7u sinh gi\u1ECDng \u0111\u1ECDc (\u0111\u1ED9 d\xE0i: ${truncatedText.length} k\xFD t\u1EF1)...`);
+        const response = await fetch(ENDPOINT, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${API_KEY}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            method: "ttsLongText",
+            input: {
+              text: truncatedText,
+              userVoiceId: VOICE_ID,
+              speed: 1
             }
-            if (part.length > maxLength) {
-              const words = part.split(" ");
-              let subChunk = "";
-              for (const word of words) {
-                if (subChunk.length + word.length + 1 > maxLength) {
-                  if (subChunk.trim()) chunks2.push(subChunk.trim());
-                  subChunk = word;
-                } else {
-                  subChunk += (subChunk ? " " : "") + word;
-                }
-              }
-              if (subChunk.trim()) {
-                if (currentChunk.length + subChunk.length + 1 > maxLength) {
-                  if (currentChunk.trim()) chunks2.push(currentChunk.trim());
-                  currentChunk = subChunk;
-                } else {
-                  currentChunk += (currentChunk ? " " : "") + subChunk;
-                }
-              }
-            } else {
-              if (currentChunk.length + part.length + 1 > maxLength) {
-                if (currentChunk.trim()) chunks2.push(currentChunk.trim());
-                currentChunk = part;
-              } else {
-                currentChunk += (currentChunk ? " " : "") + part;
-              }
-            }
+          })
+        });
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`Kh\u1EDFi t\u1EA1o job th\u1EA5t b\u1EA1i: m\xE3 l\u1ED7i ${response.status}, chi ti\u1EBFt: ${errText}`);
+        }
+        const data = await response.json();
+        if (data.error) {
+          throw new Error(`ViVibe tr\u1EA3 v\u1EC1 l\u1ED7i: ${JSON.stringify(data.error)}`);
+        }
+        const exportId = data.result?.projectExportId;
+        if (!exportId) {
+          throw new Error(`Kh\xF4ng nh\u1EADn \u0111\u01B0\u1EE3c projectExportId: ${JSON.stringify(data)}`);
+        }
+        console.log(`[Vivibe API] \u0110\xE3 t\u1EA1o th\xE0nh c\xF4ng TTS Job v\u1EDBi ID: ${exportId}. B\u1EAFt \u0111\u1EA7u th\u0103m d\xF2 ti\u1EBFn \u0111\u1ED9...`);
+        let audioUrl = "";
+        const maxAttempts = 25;
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+          console.log(`[Vivibe API] Th\u0103m d\xF2 l\u1EA7n ${attempt}...`);
+          const statusRes = await fetch(ENDPOINT, {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${API_KEY}`,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              method: "getExportStatus",
+              input: { projectExportId: exportId }
+            })
+          });
+          if (!statusRes.ok) {
+            console.warn(`[Vivibe API] Th\u0103m d\xF2 th\u1EA5t b\u1EA1i, th\u1EED l\u1EA1i trong gi\xE2y l\xE1t. M\xE3 l\u1ED7i: ${statusRes.status}`);
+            await new Promise((resolve) => setTimeout(resolve, 2e3));
+            continue;
           }
-          if (currentChunk.trim()) {
-            chunks2.push(currentChunk.trim());
+          const statusData = await statusRes.json();
+          if (statusData.error) {
+            throw new Error(`L\u1ED7i c\u1EADp nh\u1EADt ti\u1EBFn \u0111\u1ED9: ${JSON.stringify(statusData.error)}`);
           }
-          return chunks2;
-        };
-        const chunks = splitTextIntoChunks(truncatedText);
-        console.log(`[Google TTS Fallback] Fragmented text into ${chunks.length} sequential small chunks`);
-        const audioBuffers = [];
-        const batchSize = 6;
-        for (let i = 0; i < chunks.length; i += batchSize) {
-          const batch = chunks.slice(i, i + batchSize);
+          const state = statusData.result?.state;
+          console.log(`[Vivibe API] Tr\u1EA1ng th\xE1i Job hi\u1EC7n t\u1EA1i: ${state}`);
+          if (state === "completed") {
+            audioUrl = statusData.result?.url;
+            break;
+          } else if (state === "failed") {
+            throw new Error(`Job sinh gi\u1ECDng n\xF3i b\u1ECB th\u1EA5t b\u1EA1i \u1EDF ph\xEDa m\xE1y ch\u1EE7 ViVibe.`);
+          }
+          await new Promise((resolve) => setTimeout(resolve, 2e3));
+        }
+        if (!audioUrl) {
+          throw new Error("Th\u1EDDi gian ch\u1EDD x\u1EED l\xFD gi\u1ECDng n\xF3i qu\xE1 l\xE2u (Timeout 50s)");
+        }
+        console.log(`[Vivibe API] T\u1EA1o gi\u1ECDng \u0111\u1ECDc th\xE0nh c\xF4ng! Kh\u1EDFi s\u1EF1 t\u1EA3i file v\xE0 truy\u1EC1n ph\xE1t...`);
+        const audioFetch = await fetch(audioUrl);
+        if (!audioFetch.ok) {
+          throw new Error(`Kh\xF4ng th\u1EC3 t\u1EA3i xu\u1ED1ng file \xE2m thanh: m\xE3 l\u1ED7i ${audioFetch.status}`);
+        }
+        const arrayBuffer = await audioFetch.arrayBuffer();
+        const finalBuffer = Buffer.from(arrayBuffer);
+        res.setHeader("Content-Type", "audio/mpeg");
+        return res.status(200).send(finalBuffer);
+      } catch (vivibeErr) {
+        console.warn("[Vivibe TTS Failed, k\xEDch ho\u1EA1t gi\u1ECDng \u0111\u1ECDc ch\u1ECB Google d\u1EF1 ph\xF2ng]", vivibeErr.message);
+        const fallbackBuffers = [];
+        const fallbackText = truncatedText.substring(0, 1500);
+        const googleChunks = splitTextIntoChunks(fallbackText, 180);
+        for (let i = 0; i < googleChunks.length; i += 6) {
+          const batch = googleChunks.slice(i, i + 6);
           const batchPromises = batch.map(async (chunk) => {
             const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(chunk)}&tl=vi&client=tw-ob`;
-            const response = await fetch(url, {
-              headers: {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36"
-              }
-            });
-            if (!response.ok) {
-              throw new Error(`Failed to fetch TTS for chunk: ${chunk}`);
-            }
-            const arrayBuffer = await response.arrayBuffer();
-            return Buffer.from(arrayBuffer);
+            const response = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+            return Buffer.from(await response.arrayBuffer());
           });
-          const results = await Promise.all(batchPromises);
-          audioBuffers.push(...results);
+          fallbackBuffers.push(...await Promise.all(batchPromises));
         }
-        const combinedBuffer = Buffer.concat(audioBuffers);
-        console.log(`[Google TTS Fallback Success] Compiled audio. Chunks: ${chunks.length}. Total bytes: ${combinedBuffer.length}`);
+        const finalFallbackBuffer = Buffer.concat(fallbackBuffers);
         res.setHeader("Content-Type", "audio/mpeg");
-        return res.status(200).send(combinedBuffer);
+        return res.status(200).send(finalFallbackBuffer);
       }
     } catch (err) {
       console.error("Audio generation completely failed:", err);

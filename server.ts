@@ -311,109 +311,161 @@ Xin thầy hãy lập lá số tử vi dựa trên thông tin này và luận gi
         return res.status(400).json({ error: "Không tìm thấy nội dung luận giải." });
       }
 
-      // Safe clean text
-      const cleanText = text
-        .replace(/[#*`_:-]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-
-      // Limit length to prevent extreme processing time, 5000 characters is plenty for a full 8-10 minutes reading
+      // Dọn dẹp ký tự Markdown thừa để giọng đọc tự nhiên, không bị vấp
+      const cleanText = text.replace(/[#*`_:-]/g, ' ').replace(/\s+/g, ' ').trim();
       const truncatedText = cleanText.substring(0, 5000);
 
-      console.log(`[TTS] Trying Microsoft Edge TTS (Southern Older Male Voice). Length: ${truncatedText.length} characters`);
+      // ========================================================
+      // CẤU HÌNH API VIVIBE / LUCYLAB 
+      // ========================================================
+      const API_KEY = process.env.VIVIBE_API_KEY || 'sk_live_IO2D0o6QJ4bBs4ecuy0piDkB4kpl6D6A';
+      const VOICE_ID = '1mFqK2ZPpy9FUCBv4D8Leu';
+      const ENDPOINT = 'https://api.lucylab.io/json-rpc';
+
+      // Hàm chia nhỏ văn bản theo gạch đầu dòng dùng cho trường hợp dự phòng Google TTS
+      const splitTextIntoChunks = (txt: string, maxLength: number = 180): string[] => {
+        const sentences = txt.split(/([.,!?;:\n]+)/);
+        const chunks: string[] = [];
+        let currentChunk = '';
+        for (let i = 0; i < sentences.length; i++) {
+          let part = sentences[i];
+          if (!part) continue;
+          if (i + 1 < sentences.length && sentences[i + 1].match(/^[.,!?;:\n]+$/)) { 
+            part += sentences[i + 1]; 
+            i++; 
+          }
+
+          if (currentChunk.length + part.length + 1 > maxLength) {
+            if (currentChunk.trim()) chunks.push(currentChunk.trim());
+            currentChunk = part;
+          } else {
+            currentChunk += (currentChunk ? ' ' : '') + part;
+          }
+        }
+        if (currentChunk.trim()) chunks.push(currentChunk.trim());
+        return chunks;
+      };
 
       try {
-        const combinedBuffer = await generateEdgeTts(truncatedText);
+        console.log(`[Vivibe API] Gửi yêu cầu sinh giọng đọc (độ dài: ${truncatedText.length} ký tự)...`);
         
-        if (combinedBuffer.length > 0) {
-          console.log(`[Edge TTS Success] Compiled older Southern Male audio. Total bytes: ${combinedBuffer.length}`);
-          res.setHeader('Content-Type', 'audio/mpeg');
-          return res.status(200).send(combinedBuffer);
-        } else {
-          throw new Error("No audio bytes received from Edge TTS");
+        // Bước 1: Khởi tạo TTS Job bằng ttsLongText để hỗ trợ văn bản dài mượt mà
+        const response = await fetch(ENDPOINT, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${API_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            method: 'ttsLongText',
+            input: {
+              text: truncatedText,
+              userVoiceId: VOICE_ID,
+              speed: 1.0
+            }
+          })
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`Khởi tạo job thất bại: mã lỗi ${response.status}, chi tiết: ${errText}`);
         }
-      } catch (edgeErr: any) {
-        console.warn("[Edge TTS Failed, falling back to Google Translate TTS]", edgeErr?.message || edgeErr);
-        
-        // Helper to split text into safe Google Translate TTS size (max 180 chars)
-        const splitTextIntoChunks = (txt: string, maxLength: number = 180): string[] => {
-          const sentences = txt.split(/([.,!?;:\n]+)/);
-          const chunks: string[] = [];
-          let currentChunk = '';
 
-          for (let i = 0; i < sentences.length; i++) {
-            let part = sentences[i];
-            if (!part) continue;
-            if (i + 1 < sentences.length && sentences[i + 1].match(/^[.,!?;:\n]+$/)) {
-              part += sentences[i + 1];
-              i++;
-            }
-            
-            if (part.length > maxLength) {
-              const words = part.split(' ');
-              let subChunk = '';
-              for (const word of words) {
-                if (subChunk.length + word.length + 1 > maxLength) {
-                  if (subChunk.trim()) chunks.push(subChunk.trim());
-                  subChunk = word;
-                } else {
-                  subChunk += (subChunk ? ' ' : '') + word;
-                }
-              }
-              if (subChunk.trim()) {
-                if (currentChunk.length + subChunk.length + 1 > maxLength) {
-                  if (currentChunk.trim()) chunks.push(currentChunk.trim());
-                  currentChunk = subChunk;
-                } else {
-                  currentChunk += (currentChunk ? ' ' : '') + subChunk;
-                }
-              }
-            } else {
-              if (currentChunk.length + part.length + 1 > maxLength) {
-                if (currentChunk.trim()) chunks.push(currentChunk.trim());
-                currentChunk = part;
-              } else {
-                currentChunk += (currentChunk ? ' ' : '') + part;
-              }
-            }
+        const data = await response.json();
+        if (data.error) {
+          throw new Error(`ViVibe trả về lỗi: ${JSON.stringify(data.error)}`);
+        }
+
+        const exportId = data.result?.projectExportId;
+        if (!exportId) {
+          throw new Error(`Không nhận được projectExportId: ${JSON.stringify(data)}`);
+        }
+
+        console.log(`[Vivibe API] Đã tạo thành công TTS Job với ID: ${exportId}. Bắt đầu thăm dò tiến độ...`);
+
+        // Bước 2: Thăm dò (Polling) để lấy link tải file audio đã xử lý xong
+        let audioUrl = '';
+        const maxAttempts = 25; // Chờ tối đa 50 giây (25 lần * 2000ms)
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+          console.log(`[Vivibe API] Thăm dò lần ${attempt}...`);
+          
+          const statusRes = await fetch(ENDPOINT, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${API_KEY}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              method: 'getExportStatus',
+              input: { projectExportId: exportId }
+            })
+          });
+
+          if (!statusRes.ok) {
+            console.warn(`[Vivibe API] Thăm dò thất bại, thử lại trong giây lát. Mã lỗi: ${statusRes.status}`);
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            continue;
           }
-          if (currentChunk.trim()) {
-            chunks.push(currentChunk.trim());
+
+          const statusData = await statusRes.json();
+          if (statusData.error) {
+            throw new Error(`Lỗi cập nhật tiến độ: ${JSON.stringify(statusData.error)}`);
           }
-          return chunks;
-        };
 
-        const chunks = splitTextIntoChunks(truncatedText);
-        console.log(`[Google TTS Fallback] Fragmented text into ${chunks.length} sequential small chunks`);
+          const state = statusData.result?.state;
+          console.log(`[Vivibe API] Trạng thái Job hiện tại: ${state}`);
 
-        // Fetch chunks with parallelized batching to stay incredibly fast
-        const audioBuffers: Buffer[] = [];
-        const batchSize = 6;
+          if (state === 'completed') {
+            audioUrl = statusData.result?.url;
+            break;
+          } else if (state === 'failed') {
+            throw new Error(`Job sinh giọng nói bị thất bại ở phía máy chủ ViVibe.`);
+          }
+
+          // Chờ 2 giây trước lần thăm dò tiếp theo
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+
+        if (!audioUrl) {
+          throw new Error('Thời gian chờ xử lý giọng nói quá lâu (Timeout 50s)');
+        }
+
+        console.log(`[Vivibe API] Tạo giọng đọc thành công! Khởi sự tải file và truyền phát...`);
+
+        // Bước 3: Tải file nhị phân và gửi trực tiếp về cho trình duyệt
+        const audioFetch = await fetch(audioUrl);
+        if (!audioFetch.ok) {
+          throw new Error(`Không thể tải xuống file âm thanh: mã lỗi ${audioFetch.status}`);
+        }
+
+        const arrayBuffer = await audioFetch.arrayBuffer();
+        const finalBuffer = Buffer.from(arrayBuffer);
+
+        res.setHeader('Content-Type', 'audio/mpeg');
+        return res.status(200).send(finalBuffer);
+
+      } catch (vivibeErr: any) {
+        console.warn('[Vivibe TTS Failed, kích hoạt giọng đọc chị Google dự phòng]', vivibeErr.message);
         
-        for (let i = 0; i < chunks.length; i += batchSize) {
-          const batch = chunks.slice(i, i + batchSize);
+        // Dự phòng giọng đọc chị Google nếu Vivibe lỗi hoặc quá tải
+        const fallbackBuffers: Buffer[] = [];
+        // Google Translate giới hạn ký tự đọc nên ta giới hạn đoạn dự phòng xuống 1500 để tối ưu tốc độ response
+        const fallbackText = truncatedText.substring(0, 1500);
+        const googleChunks = splitTextIntoChunks(fallbackText, 180);
+        
+        for (let i = 0; i < googleChunks.length; i += 6) {
+          const batch = googleChunks.slice(i, i + 6);
           const batchPromises = batch.map(async (chunk) => {
             const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(chunk)}&tl=vi&client=tw-ob`;
-            const response = await fetch(url, {
-              headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'
-              }
-            });
-            if (!response.ok) {
-              throw new Error(`Failed to fetch TTS for chunk: ${chunk}`);
-            }
-            const arrayBuffer = await response.arrayBuffer();
-            return Buffer.from(arrayBuffer);
+            const response = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+            return Buffer.from(await response.arrayBuffer());
           });
-          
-          const results = await Promise.all(batchPromises);
-          audioBuffers.push(...results);
+          fallbackBuffers.push(...(await Promise.all(batchPromises)));
         }
-
-        const combinedBuffer = Buffer.concat(audioBuffers);
-        console.log(`[Google TTS Fallback Success] Compiled audio. Chunks: ${chunks.length}. Total bytes: ${combinedBuffer.length}`);
+        
+        const finalFallbackBuffer = Buffer.concat(fallbackBuffers);
         res.setHeader('Content-Type', 'audio/mpeg');
-        return res.status(200).send(combinedBuffer);
+        return res.status(200).send(finalFallbackBuffer);
       }
     } catch (err: any) {
       console.error("Audio generation completely failed:", err);
