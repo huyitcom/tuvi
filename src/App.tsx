@@ -327,7 +327,7 @@ export default function App() {
             transition={{ duration: 0.8, ease: "easeOut" }}
           >
             <h1 className="font-serif text-5xl md:text-7xl font-medium text-[var(--color-gold-500)] mb-4 tracking-tight">
-              Thầy Tử Vi Huy Đạt
+              Thầy Bảy Xì Gòn
             </h1>
             <p className="text-lg md:text-xl text-[var(--color-paper)] opacity-70 font-light max-w-2xl mx-auto">
               Cung cấp ngày giờ sinh, tỏ thiên cơ. Lão phu sẽ giúp đương số nhìn thấu 12 cung mệnh vận, thấu hiểu nhân sinh.
