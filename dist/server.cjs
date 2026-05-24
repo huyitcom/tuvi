@@ -26,6 +26,7 @@ var import_express = __toESM(require("express"), 1);
 var import_path = __toESM(require("path"), 1);
 var import_vite = require("vite");
 var import_genai = require("@google/genai");
+var import_edge_tts_node = require("edge-tts-node");
 var import_dotenv = __toESM(require("dotenv"), 1);
 import_dotenv.default.config();
 async function startServer() {
@@ -90,18 +91,66 @@ async function startServer() {
       }
       const yearNum = parseInt(year, 10);
       const ZODIAC_ANIMALS = [
-        { vi: "B\u1EA3n m\u1EC7nh: Th\xE2n (Kh\u1EC9)", en: "Monkey" },
-        { vi: "B\u1EA3n m\u1EC7nh: D\u1EADu (G\xE0)", en: "Rooster" },
-        { vi: "B\u1EA3n m\u1EC7nh: Tu\u1EA5t (Ch\xF3)", en: "Dog" },
-        { vi: "B\u1EA3n m\u1EC7nh: H\u1EE3i (L\u1EE3n)", en: "Pig" },
-        { vi: "B\u1EA3n m\u1EC7nh: T\xFD (Chu\u1ED9t)", en: "Rat" },
-        { vi: "B\u1EA3n m\u1EC7nh: S\u1EEDu (Tr\xE2u)", en: "Water Buffalo" },
-        { vi: "B\u1EA3n m\u1EC7nh: D\u1EA7n (H\u1ED5)", en: "Tiger" },
-        { vi: "B\u1EA3n m\u1EC7nh: M\xE3o (M\xE8o)", en: "Cat" },
-        { vi: "B\u1EA3n m\u1EC7nh: Th\xECn (R\u1ED3ng)", en: "Dragon" },
-        { vi: "B\u1EA3n m\u1EC7nh: T\u1EF5 (R\u1EAFn)", en: "Snake" },
-        { vi: "B\u1EA3n m\u1EC7nh: Ng\u1ECD (Ng\u1EF1a)", en: "Horse" },
-        { vi: "B\u1EA3n m\u1EC7nh: M\xF9i (D\xEA)", en: "Goat" }
+        {
+          vi: "B\u1EA3n m\u1EC7nh: Th\xE2n (Kh\u1EC9)",
+          en: "Monkey",
+          fallbackImage: "https://images.unsplash.com/photo-1540573133-7587b7f16bf5?auto=format&fit=crop&q=80&w=600"
+        },
+        {
+          vi: "B\u1EA3n m\u1EC7nh: D\u1EADu (G\xE0)",
+          en: "Rooster",
+          fallbackImage: "https://images.unsplash.com/photo-1548142813-c348350df52b?auto=format&fit=crop&q=80&w=600"
+        },
+        {
+          vi: "B\u1EA3n m\u1EC7nh: Tu\u1EA5t (Ch\xF3)",
+          en: "Dog",
+          fallbackImage: "https://images.unsplash.com/photo-1534361960057-19889db9621e?auto=format&fit=crop&q=80&w=600"
+        },
+        {
+          vi: "B\u1EA3n m\u1EC7nh: H\u1EE3i (L\u1EE3n)",
+          en: "Pig",
+          fallbackImage: "https://images.unsplash.com/photo-1604848698030-c434ba0861db?auto=format&fit=crop&q=80&w=600"
+        },
+        {
+          vi: "B\u1EA3n m\u1EC7nh: T\xFD (Chu\u1ED9t)",
+          en: "Rat",
+          fallbackImage: "https://images.unsplash.com/photo-1542385151-efd9000785a0?auto=format&fit=crop&q=80&w=600"
+        },
+        {
+          vi: "B\u1EA3n m\u1EC7nh: S\u1EEDu (Tr\xE2u)",
+          en: "Water Buffalo",
+          fallbackImage: "https://images.unsplash.com/photo-1551884833-253d7f240508?auto=format&fit=crop&q=80&w=600"
+        },
+        {
+          vi: "B\u1EA3n m\u1EC7nh: D\u1EA7n (H\u1ED5)",
+          en: "Tiger",
+          fallbackImage: "https://images.unsplash.com/photo-1508215886085-26388f586a1e?auto=format&fit=crop&q=80&w=600"
+        },
+        {
+          vi: "B\u1EA3n m\u1EC7nh: M\xE3o (M\xE8o)",
+          en: "Cat",
+          fallbackImage: "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?auto=format&fit=crop&q=80&w=600"
+        },
+        {
+          vi: "B\u1EA3n m\u1EC7nh: Th\xECn (R\u1ED3ng)",
+          en: "Dragon",
+          fallbackImage: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=600"
+        },
+        {
+          vi: "B\u1EA3n m\u1EC7nh: T\u1EF5 (R\u1EAFn)",
+          en: "Snake",
+          fallbackImage: "https://images.unsplash.com/photo-1531386151447-fd762e7a3ae4?auto=format&fit=crop&q=80&w=600"
+        },
+        {
+          vi: "B\u1EA3n m\u1EC7nh: Ng\u1ECD (Ng\u1EF1a)",
+          en: "Horse",
+          fallbackImage: "https://images.unsplash.com/photo-1488034976201-ffbaa99cbf5c?auto=format&fit=crop&q=80&w=600"
+        },
+        {
+          vi: "B\u1EA3n m\u1EC7nh: M\xF9i (D\xEA)",
+          en: "Goat",
+          fallbackImage: "https://images.unsplash.com/photo-1524024973431-2ad916746881?auto=format&fit=crop&q=80&w=600"
+        }
       ];
       const zodiac = ZODIAC_ANIMALS[yearNum % 12];
       const SYSTEM_INSTRUCTION = `
@@ -151,53 +200,32 @@ Xin th\u1EA7y h\xE3y l\u1EADp l\xE1 s\u1ED1 t\u1EED vi d\u1EF1a tr\xEAn th\xF4ng
           });
         }
       }
-      const textPromise = callGeminiWithRetry({
-        model: "gemini-3.5-flash",
-        contents: { parts },
-        config: {
-          systemInstruction: SYSTEM_INSTRUCTION,
-          temperature: 0.7
-        },
-        retries: 3,
-        fallbackModels: ["gemini-3.1-flash-lite", "gemini-flash-latest"]
-      });
-      const imagePromise = callGeminiWithRetry({
-        model: "gemini-2.5-flash-image",
-        contents: {
-          parts: [
-            { text: `A majestic, mystical, and artistic portrait of a ${zodiac.en}, representing the Vietnamese zodiac sign. Oriental fantasy style, golden and dark purple color palette, highly detailed, digital art, tarot card style, ethereal lighting.` }
-          ]
-        },
-        retries: 1,
-        // Minimize retry overhead for quota 0 model
-        fallbackModels: []
-        // No text model fallbacks for images!
-      });
-      const [textResponse, imgResponse] = await Promise.allSettled([textPromise, imagePromise]);
       let resultText = "";
-      if (textResponse.status === "fulfilled" && textResponse.value && textResponse.value.text) {
-        resultText = textResponse.value.text;
-      } else {
-        const errorMsg = textResponse.status === "rejected" ? textResponse.reason : "Kh\xF4ng nh\u1EADn \u0111\u01B0\u1EE3c ph\u1EA3n h\u1ED3i ph\xF9 h\u1EE3p";
-        console.error("Text horoscope generation failed:", errorMsg);
+      try {
+        const textResponse = await callGeminiWithRetry({
+          model: "gemini-3.5-flash",
+          contents: { parts },
+          config: {
+            systemInstruction: SYSTEM_INSTRUCTION,
+            temperature: 0.7
+          },
+          retries: 3,
+          fallbackModels: ["gemini-3.1-flash-lite", "gemini-flash-latest"]
+        });
+        if (textResponse && textResponse.text) {
+          resultText = textResponse.text;
+        } else {
+          throw new Error("Kh\xF4ng nh\u1EADn \u0111\u01B0\u1EE3c ph\u1EA3n h\u1ED3i ph\xF9 h\u1EE3p t\u1EEB tr\xED tu\u1EC7 nh\xE2n t\u1EA1o");
+        }
+      } catch (textErr) {
+        console.error("Text horoscope generation failed:", textErr);
         return res.status(500).json({ error: "L\xE3o phu ch\u01B0a th\u1EC3 th\u1EA5u th\u1ECB thi\xEAn c\u01A1 l\xFAc n\xE0y. Xin \u0111\u01B0\u01A1ng s\u1ED1 hoan h\u1EF7 th\u1EED l\u1EA1i sau \xEDt ph\xFAt." });
       }
-      let zodiacImage = "";
-      if (imgResponse.status === "fulfilled" && imgResponse.value && imgResponse.value.candidates?.[0]?.content?.parts) {
-        for (const part of imgResponse.value.candidates[0].content.parts) {
-          if (part.inlineData) {
-            zodiacImage = `data:${part.inlineData.mimeType || "image/png"};base64,${part.inlineData.data}`;
-            break;
-          }
-        }
-      } else {
-        const errorMsg = imgResponse.status === "rejected" ? imgResponse.reason : "Kh\xF4ng t\u1EA1o \u0111\u01B0\u1EE3c h\xECnh \u1EA3nh linh v\u1EADt";
-        console.error("Zodiac image generation failed (non-blocking):", errorMsg);
-      }
+      const zodiacImage = zodiac.fallbackImage;
       return res.json({
         result: resultText,
         zodiacName: zodiac.vi,
-        zodiacImage: zodiacImage || null
+        zodiacImage
       });
     } catch (err) {
       console.error("API error in analyze-chart:", err);
@@ -210,94 +238,114 @@ Xin th\u1EA7y h\xE3y l\u1EADp l\xE1 s\u1ED1 t\u1EED vi d\u1EF1a tr\xEAn th\xF4ng
       if (!text) {
         return res.status(400).json({ error: "Kh\xF4ng t\xECm th\u1EA5y n\u1ED9i dung lu\u1EADn gi\u1EA3i." });
       }
-      const cleanText = text.replace(/[#*`_]/g, "").replace(/\s+/g, " ").trim();
-      console.log(`[TTS Processor] Starting full reading text length: ${cleanText.length} characters`);
-      const sentences = cleanText.split(/([.!?]+)/).filter((s) => s.trim().length > 0);
-      const chunks = [];
-      let currentChunk = "";
-      for (let i = 0; i < sentences.length; i++) {
-        let part = sentences[i];
-        if (i + 1 < sentences.length && sentences[i + 1].match(/^[.!?]+$/)) {
-          part += sentences[i + 1];
-          i++;
-        }
-        if (currentChunk.length + part.length > 2500) {
-          if (currentChunk.trim()) {
-            chunks.push(currentChunk.trim());
-          }
-          currentChunk = part;
+      const cleanText = text.replace(/[#*`_:-]/g, " ").replace(/\s+/g, " ").trim();
+      const truncatedText = cleanText.substring(0, 5e3);
+      console.log(`[TTS] Trying Microsoft Edge TTS (Southern Older Male Voice). Length: ${truncatedText.length} characters`);
+      try {
+        const tts = new import_edge_tts_node.MsEdgeTTS({ enableLogger: false });
+        await tts.setMetadata("vi-VN-NamMinhNeural", import_edge_tts_node.OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
+        const stream = tts.toStream(truncatedText, {
+          pitch: "-8%",
+          // Slightly lowered to sound like a warm, deep, elderly wise man
+          rate: "-10%"
+          // Slowed down for old-wise-fortune-teller delivery vibe
+        });
+        const chunks = [];
+        await new Promise((resolve, reject) => {
+          stream.on("data", (chunk) => {
+            chunks.push(chunk);
+          });
+          stream.on("end", () => {
+            resolve();
+          });
+          stream.on("error", (err) => {
+            reject(err);
+          });
+        });
+        tts.close();
+        const combinedBuffer = Buffer.concat(chunks);
+        if (combinedBuffer.length > 0) {
+          const base64Audio = combinedBuffer.toString("base64");
+          console.log(`[Edge TTS Success] Compiled older Southern Male audio. Total bytes: ${combinedBuffer.length}`);
+          return res.json({ audioSrc: `data:audio/mp3;base64,${base64Audio}` });
         } else {
-          currentChunk += (currentChunk ? " " : "") + part;
+          throw new Error("No audio bytes received from Edge TTS");
         }
-      }
-      if (currentChunk.trim()) {
-        chunks.push(currentChunk.trim());
-      }
-      const limitedChunks = chunks.slice(0, 4);
-      console.log(`[TTS Processor] Fragmented text into ${limitedChunks.length} sequential chunks`);
-      const pcmBuffers = [];
-      const fetchChunkPcm = async (chunkText) => {
-        const response = await callGeminiWithRetry({
-          model: "gemini-3.1-flash-tts-preview",
-          contents: [{ parts: [{ text: chunkText }] }],
-          config: {
-            responseModalities: ["AUDIO"],
-            speechConfig: {
-              voiceConfig: {
-                prebuiltVoiceConfig: { voiceName: "Puck" }
-                // Puck is a deep warm male voice
+      } catch (edgeErr) {
+        console.warn("[Edge TTS Failed, falling back to Google Translate TTS]", edgeErr?.message || edgeErr);
+        const splitTextIntoChunks = (txt, maxLength = 180) => {
+          const sentences = txt.split(/([.,!?;:\n]+)/);
+          const chunks2 = [];
+          let currentChunk = "";
+          for (let i = 0; i < sentences.length; i++) {
+            let part = sentences[i];
+            if (!part) continue;
+            if (i + 1 < sentences.length && sentences[i + 1].match(/^[.,!?;:\n]+$/)) {
+              part += sentences[i + 1];
+              i++;
+            }
+            if (part.length > maxLength) {
+              const words = part.split(" ");
+              let subChunk = "";
+              for (const word of words) {
+                if (subChunk.length + word.length + 1 > maxLength) {
+                  if (subChunk.trim()) chunks2.push(subChunk.trim());
+                  subChunk = word;
+                } else {
+                  subChunk += (subChunk ? " " : "") + word;
+                }
+              }
+              if (subChunk.trim()) {
+                if (currentChunk.length + subChunk.length + 1 > maxLength) {
+                  if (currentChunk.trim()) chunks2.push(currentChunk.trim());
+                  currentChunk = subChunk;
+                } else {
+                  currentChunk += (currentChunk ? " " : "") + subChunk;
+                }
+              }
+            } else {
+              if (currentChunk.length + part.length + 1 > maxLength) {
+                if (currentChunk.trim()) chunks2.push(currentChunk.trim());
+                currentChunk = part;
+              } else {
+                currentChunk += (currentChunk ? " " : "") + part;
               }
             }
-          },
-          retries: 3,
-          fallbackModels: []
-          // No fallback for speech
-        });
-        const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-        if (!base64Audio) {
-          throw new Error("Kh\xF4ng nh\u1EADn \u0111\u01B0\u1EE3c ph\u1EA3n h\u1ED3i \xE2m thanh t\u1EEB h\u1EC7 th\u1ED1ng.");
+          }
+          if (currentChunk.trim()) {
+            chunks2.push(currentChunk.trim());
+          }
+          return chunks2;
+        };
+        const chunks = splitTextIntoChunks(truncatedText);
+        console.log(`[Google TTS Fallback] Fragmented text into ${chunks.length} sequential small chunks`);
+        const audioBuffers = [];
+        const batchSize = 6;
+        for (let i = 0; i < chunks.length; i += batchSize) {
+          const batch = chunks.slice(i, i + batchSize);
+          const batchPromises = batch.map(async (chunk) => {
+            const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(chunk)}&tl=vi&client=tw-ob`;
+            const response = await fetch(url, {
+              headers: {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36"
+              }
+            });
+            if (!response.ok) {
+              throw new Error(`Failed to fetch TTS for chunk: ${chunk}`);
+            }
+            const arrayBuffer = await response.arrayBuffer();
+            return Buffer.from(arrayBuffer);
+          });
+          const results = await Promise.all(batchPromises);
+          audioBuffers.push(...results);
         }
-        const buffer = Buffer.from(base64Audio, "base64");
-        if (buffer.length >= 44 && buffer.slice(0, 4).toString("ascii") === "RIFF") {
-          return buffer.subarray(44);
-        }
-        return buffer;
-      };
-      for (let i = 0; i < limitedChunks.length; i++) {
-        console.log(`[TTS Processor] Rendering chunk ${i + 1}/${limitedChunks.length} (length: ${limitedChunks[i].length})`);
-        const pcm = await fetchChunkPcm(limitedChunks[i]);
-        pcmBuffers.push(pcm);
-        if (i < limitedChunks.length - 1) {
-          await new Promise((resolve) => setTimeout(resolve, 200));
-        }
+        const combinedBuffer = Buffer.concat(audioBuffers);
+        const base64Audio = combinedBuffer.toString("base64");
+        console.log(`[Google TTS Fallback Success] Compiled audio. Chunks: ${chunks.length}. Total bytes: ${combinedBuffer.length}`);
+        return res.json({ audioSrc: `data:audio/mp3;base64,${base64Audio}` });
       }
-      const concatenatedPcm = Buffer.concat(pcmBuffers);
-      const dataSize = concatenatedPcm.length;
-      const sampleRate = 24e3;
-      const numChannels = 1;
-      const bitsPerSample = 16;
-      const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
-      const blockAlign = numChannels * (bitsPerSample / 8);
-      const header = Buffer.alloc(44);
-      header.write("RIFF", 0);
-      header.writeUInt32LE(36 + dataSize, 4);
-      header.write("WAVE", 8);
-      header.write("fmt ", 12);
-      header.writeUInt32LE(16, 16);
-      header.writeUInt16LE(1, 20);
-      header.writeUInt16LE(numChannels, 22);
-      header.writeUInt32LE(sampleRate, 24);
-      header.writeUInt32LE(byteRate, 28);
-      header.writeUInt16LE(blockAlign, 32);
-      header.writeUInt16LE(bitsPerSample, 34);
-      header.write("data", 36);
-      header.writeUInt32LE(dataSize, 40);
-      const responseWav = Buffer.concat([header, concatenatedPcm]);
-      const base64Wav = responseWav.toString("base64");
-      console.log(`[TTS Success] Compiled multi-chunk audio. Total chunks processed: ${limitedChunks.length}. Bytes: ${responseWav.length}`);
-      return res.json({ audioSrc: `data:audio/wav;base64,${base64Wav}` });
     } catch (err) {
-      console.error("TTS generation error:", err);
+      console.error("Audio generation completely failed:", err);
       return res.status(500).json({ error: "L\u1EDDi v\xE0ng \xFD ng\u1ECDc ch\u01B0a th\u1EC3 ng\xE2n vang. Mong \u0111\u01B0\u01A1ng s\u1ED1 t\u1EF1 xem qu\u1EBB b\u1EB1ng m\u1EAFt." });
     }
   });
