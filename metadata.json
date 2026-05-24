@@ -1,0 +1,6 @@
+{
+  "name": "Thầy Tử Vi - Luận Giải Lá Số",
+  "description": "Ứng dụng luận giải lá số tử vi chuyên sâu với phong cách của một bậc thầy tử vi lão luyện.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
