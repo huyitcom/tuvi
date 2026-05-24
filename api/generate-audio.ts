@@ -13,7 +13,7 @@ export default async function handler(req: any, res: any) {
 
     // Dọn dẹp ký tự Markdown thừa để giọng đọc tự nhiên, không bị vấp
     const cleanText = text.replace(/[#*`_:-]/g, ' ').replace(/\s+/g, ' ').trim();
-    const truncatedText = cleanText.substring(0, 5000);
+    const truncatedText = cleanText.substring(0, 800);
 
     // ========================================================
     // CẤU HÌNH API VIVIBE 
