@@ -19,7 +19,7 @@ export default async function handler(req: any, res: any) {
     // CẤU HÌNH API VIVIBE / LUCYLAB 
     // ========================================================
     const API_KEY = process.env.VIVIBE_API_KEY || 'sk_live_IO2D0o6QJ4bBs4ecuy0piDkB4kpl6D6A';
-    const VOICE_ID = '1mFqK2ZPpy9FUCBv4D8Leu';
+    const VOICE_ID = '8u97ewbLyV5dwePspwJY1w';
     const ENDPOINT = 'https://api.lucylab.io/json-rpc';
 
     // Hàm chia nhỏ văn bản theo gạch đầu dòng dùng cho trường hợp dự phòng Google TTS

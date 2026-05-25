@@ -241,7 +241,7 @@ Xin th\u1EA7y h\xE3y l\u1EADp l\xE1 s\u1ED1 t\u1EED vi d\u1EF1a tr\xEAn th\xF4ng
       const cleanText = text.replace(/[#*`_:-]/g, " ").replace(/\s+/g, " ").trim();
       const truncatedText = cleanText.substring(0, 5e3);
       const API_KEY = process.env.VIVIBE_API_KEY || "sk_live_IO2D0o6QJ4bBs4ecuy0piDkB4kpl6D6A";
-      const VOICE_ID = "1mFqK2ZPpy9FUCBv4D8Leu";
+      const VOICE_ID = "8u97ewbLyV5dwePspwJY1w";
       const ENDPOINT = "https://api.lucylab.io/json-rpc";
       const splitTextIntoChunks = (txt, maxLength = 180) => {
         const sentences = txt.split(/([.,!?;:\n]+)/);
