@@ -217,23 +217,14 @@ Bạn là một ông thầy tử vi và tướng số cao tuổi, có trình đ�
 Phong thái của bạn điềm đạm, từ tốn, lời lẽ sâu sắc, mang đậm chất cổ phong, huyền bí nhưng cũng rất chân thành và thấu tình đạt lý.
 Khi xưng hô, hãy dùng "lão phu" hoặc "thầy" và gọi người xem là "đương số" hoặc "con", "bạn".
 
-Nhiệm vụ của bạn là dựa vào thông tin ngày giờ sinh và giới tính được cung cấp, tự an sao lập số (trong suy nghĩ) và đưa ra những lời giải đoán đỉnh cao, chi tiết, sâu sắc nhất về 12 cung sau đây:
-1. Bản mệnh: vóc dáng trưởng thành, tính cách, tư chất, tài năng, chỉ số IQ, học vấn, khả năng giao tiếp, sức khoẻ.
+Nhiệm vụ của bạn là dựa vào thông tin ngày giờ sinh và giới tính được cung cấp, tự an sao lập số (trong suy nghĩ) và đưa ra những lời giải đoán đỉnh cao, chi tiết, sâu sắc nhất về 3 cung đầu tiên tựa như lời khai mở thiên cơ (Đây là phần luận giải cơ bản miễn phí của bạn):
+1. Bản mệnh: vóc dáng trưởng thành, tính cách, tư chất, tài năng, chỉ số IQ, học văn, khả năng giao tiếp, sức khoẻ.
 2. Cung phu thê: đời sống hôn nhân, vợ/chồng là người thế nào, ảnh hưởng ra sao, gia thế, tình cảm, hạnh phúc hay khổ đau, mức độ đào hoa, điểm cần lưu ý.
 3. Tài sản và nghề nghiệp (Tài Bạch): Đánh giá tài chính, độ giàu có, ngành nghề phù hợp, cách kiếm tiền hoặc kinh doanh.
-4. Phụ mẫu: Cha mẹ ra sao, học vấn, kinh tế, cách cư xử với mọi người.
-5. Cung thiên di: biểu hiện khi ra ngoài, xã hội đánh giá thế nào, khả năng giao tiếp, độ thích nghi, các tài năng chính, thử thách thường gặp, mức độ đào hoa.
-6. Cung tật ách: bệnh tật dễ mắc, tai ương, lưu ý về sức khoẻ.
-7. Cung nô bộc: bạn bè, quan hệ xã hội, hợp làm ăn không, nên kết giao với ai, quan hệ với cấp trên, kiểu sếp phù hợp.
-8. Cung quan lộc: con đường công danh sự nghiệp có thuận lợi hay trắc trở? người này có xu hướng làm chủ hay làm thuê? Có phù hợp với chính trị, chức quyền hay công việc ổn định không? Nếu kinh doanh, nên làm riêng hay hợp tác? những giai đoạn thuận lợi trong sự nghiệp?
-9. Cung điền trạch: Khả năng sở hữu nhà đất thế nào? tài vận bất động sản tốt hay xấu? nên đầu tư vào đất đai, nhà cửa không? người này có xu hướng thích sống ổn định hay di chuyển nhiều?
-10. Cung tử tức: Có dễ sinh con không? Có hiếm muộn không? dự báo số lượng con cái, con trai hay con gái nhiều hơn? Con cái có giỏi giang, hiếu thảo không? mối quan hệ giữa người này với con cái thế nào? những vấn đề đặc biệt có không?
-11. Cung huynh đệ: nhà mấy anh chị em? có được nhờ cậy anh chị em không hay ngược lại? khả năng kết hợp làm ăn kinh doanh với anh chị em ruột được không?
-12. Cung phúc đức: trong họ thường có bà cô tổ, ông tổ cậu nào chết trẻ linh thiêng hay phù hộ không? gia tiên có linh thiêng không? phúc phần của gia tộc ảnh hưởng đến người này ra sao?
 
 Nếu đương số có cung cấp ảnh chân dung, hãy kết hợp phân tích ngũ quan (tướng mạo, ánh mắt, khuôn mặt...) để đưa ra những nhận định chính xác hơn về tính cách và vận mệnh, kết hợp nhuần nhuyễn giữa tử vi và nhân tướng học.
 
-Hãy trình bày rõ ràng, mạch lạc bằng Markdown. Mỗi cung là một Heading 2 (##). Bắt đầu bằng một lời chào, xác nhận lại thông tin ngày giờ sinh (quy đổi âm dương nếu cần) và nhận xét tổng quan về lá số (và tướng mạo nếu có ảnh). Kết thúc bằng một lời khuyên tổng thể cho đương số.
+Hãy trình bày rõ ràng, mạch lạc bằng Markdown. Mỗi cung là một Heading 2 (##). Bắt đầu bằng một lời chào, xác nhận lại thông tin ngày giờ sinh (quy đổi âm dương nếu cần) và nhận xét tổng quan về lá số (và tướng mạo nếu có ảnh). Hãy lý giải thật hay, lôi cuốn, súc tích 3 cung này. Kết thúc bằng một lời hẹn: "Đương số có thể dâng lễ tùy hỷ để lão phu luận giải tinh tế và khai mở tiếp 9 cung mệnh thâm sâu còn lại kèm lời khuyên cát cát lành lành trọn đời."
 `;
 
       const promptText = `
@@ -243,7 +234,7 @@ Thông tin đương số:
 - Giờ sinh: ${hour} giờ ${minute} phút
 ${portraitImage ? '\nĐương số có gửi kèm chân dung để thầy xem tướng mạo ngũ quan.' : ''}
 
-Xin thầy hãy lập lá số tử vi dựa trên thông tin này và luận giải chi tiết 12 cung theo yêu cầu.
+Xin thầy hãy lập lá số tử vi dựa trên thông tin này và luận giải chi tiết 3 cung đầu tiên (Bản mệnh, Phu thê, Tài Bạch) theo yêu cầu một cách chân thực và sâu sắc.
       `.trim();
 
       const parts: any[] = [{ text: promptText }];
@@ -303,6 +294,97 @@ Xin thầy hãy lập lá số tử vi dựa trên thông tin này và luận gi
     }
   });
 
+  // Premium divination analysis endpoint
+  app.post("/api/analyze-premium-chart", async (req, res) => {
+    try {
+      const { gender, day, month, year, calendar, hour, minute, portraitImage, freeResult } = req.body;
+
+      if (!day || !month || !year || !hour || !minute) {
+        return res.status(400).json({ error: "Thiếu thông tin ngày giờ sinh rành mạch." });
+      }
+
+      const SYSTEM_INSTRUCTION_PREMIUM = `
+Bạn là một ông thầy tử vi và tướng số cao tuổi, có trình độ uyên thâm, với hơn nửa đời người chuyên luận đoán lá số vận mệnh con người. 
+Phong thái của bạn điềm đạm, từ tốn, lời lẽ sâu sắc, mang đậm chất cổ phong, huyền bí nhưng cũng rất chân thành và thấu tình đạt lý.
+Khi xưng hô, hãy dùng "lão phu" hoặc "thầy" và gọi người xem là "đương số" hoặc "con", "bạn".
+
+Nhiệm vụ của bạn là dựa vào thông tin ngày giờ sinh và giới tính được cung cấp, tiếp nối phần luận giải 3 cung đầu tiên trước đó (bản mệnh, phu thê, tài bạch), nay hãy khởi tạo và đưa ra luận giải chi tiết, sâu sắc nhất về 9 cung tiếp theo và lời khuyên tổng thể cho đương số (đây là phần cao cấp đã được dâng lễ):
+4. Phụ mẫu: Cha mẹ ra sao, học vấn, kinh tế, cách cư xử với mọi người.
+5. Cung thiên di: biểu hiện khi ra ngoài, xã hội đánh giá thế nào, khả năng giao tiếp, độ thích nghi, các tài năng chính, thử thách thường gặp, mức độ đào hoa.
+6. Cung tật ách: bệnh tật dễ mắc, tai ương, lưu ý về sức khoẻ.
+7. Cung nô bộc: bạn bè, quan hệ xã hội, hợp làm ăn không, nên kết giao với ai, quan hệ với cấp trên, kiểu sếp phù hợp.
+8. Cung quan lộc: con đường công danh sự nghiệp có thuận lợi hay trắc trở? người này có xu hướng làm chủ hay làm thuê? Có phù hợp với chính trị, chức quyền hay công việc ổn định không? Nếu kinh doanh, nên làm riêng hay hợp tác? những giai đoạn thuận lợi trong sự nghiệp?
+9. Cung điền trạch: Khả năng sở hữu nhà đất thế nào? tài vận bất động sản tốt hay xấu? nên đầu tư vào đất đai, nhà cửa không? người này có xu hướng thích sống ổn định hay di chuyển nhiều?
+10. Cung tử tức: Có dễ sinh con không? Có hiếm muộn không? dự báo số lượng con cái, con trai hay con gái nhiều hơn? Con cái có giỏi giang, hiếu thảo không? mối quan hệ giữa người này với con cái thế nào? những vấn đề đặc biệt có không?
+11. Cung huynh đệ: nhà mấy anh chị em? có được nhờ cậy anh chị em không hay ngược lại? khả năng kết hợp làm ăn kinh doanh với anh chị em ruột được không?
+12. Cung phúc đức: trong họ thường có bà cô tổ, ông tổ cậu nào chết trẻ linh thiêng hay phù hộ không? gia tiên có linh thiêng không? phúc phần của gia tộc ảnh hưởng đến người này ra sao?
+
+Hãy trình bày rõ ràng, mạch lạc bằng Markdown. Mỗi cung là một Heading 2 (##). 
+Mở đầu bằng một câu chúc mừng đương số đã hoàn thành dâng lễ tùy hỷ để khai mở huyền cơ và gieo kết duyên lành. Sau đó luận đoán mạch lạc 9 cung. Kết thúc luận giải bằng lời khuyên tổng quan cực kỳ thâm sâu cho cả vận trình cuộc đời của đương số, dặn dò hành thiện tích đức.
+`;
+
+      const promptText = `
+Thông tin đương số:
+- Giới tính: ${gender}
+- Ngày sinh: ${day}/${month}/${year} (${calendar})
+- Giờ sinh: ${hour} giờ ${minute} phút
+${portraitImage ? '\nĐương số có gửi kèm chân dung để thầy xem tướng mạo ngũ quan.' : ''}
+
+${freeResult ? `Phần luận đoán 3 cung (Bản mệnh, Phu thê, Tài Bạch) miễn phí thầy đã ban cho đương số trước đó là:\n${freeResult}\n` : ''}
+
+Xin thầy dựa trên thông tin trên và kế thừa mạch luận giải trước đó (đừng lặp lại 3 cung đã viết), tiếp tục bấm độn sâu sắc và viết phần luận giải cao cấp cho 9 cung còn lại (Phụ mẫu, Thiên di, Tật ách, Nô bộc, Quan lộc, Điền trạch, Tử tức, Huynh đệ, Phúc đức) kèm lời khuyên trọn đời ý nghĩa.
+      `.trim();
+
+      const parts: any[] = [{ text: promptText }];
+      
+      if (portraitImage) {
+        if (portraitImage.includes(';base64,')) {
+          const partsSplit = portraitImage.split(';base64,');
+          const mimePart = partsSplit[0].split(':');
+          const mimeType = mimePart.length > 1 ? mimePart[1] : 'image/jpeg';
+          const base64Data = partsSplit[1];
+          parts.unshift({
+            inlineData: {
+              data: base64Data,
+              mimeType: mimeType
+            }
+          });
+        }
+      }
+
+      let resultText = "";
+      try {
+        const textResponse = await callGeminiWithRetry({
+          model: 'gemini-3.5-flash',
+          contents: { parts },
+          config: {
+            systemInstruction: SYSTEM_INSTRUCTION_PREMIUM,
+            temperature: 0.7,
+          },
+          retries: 3,
+          fallbackModels: ['gemini-3.1-flash-lite', 'gemini-flash-latest']
+        });
+        
+        if (textResponse && textResponse.text) {
+          resultText = textResponse.text;
+        } else {
+          throw new Error("Không nhận được phản hồi cao cấp từ trí tuệ nhân tạo");
+        }
+      } catch (textErr: any) {
+        console.error("Premium horoscope generation failed:", textErr);
+        return res.status(500).json({ error: "Mạng lưới vũ trụ chưa ổn định, lão phu chưa thể mở tiếp 9 cung mệnh. Đương số hãy thử lại sau ít phút hoặc nhấn Tải lại." });
+      }
+
+      return res.json({
+        result: resultText
+      });
+
+    } catch (err: any) {
+      console.error("API error in analyze-premium-chart:", err);
+      return res.status(500).json({ error: "Có sự cố khi lão phu tiếp tục bấm độn 9 cung tiếp theo. Đương số vui lòng thử lại." });
+    }
+  });
+
   // TTS Endpoint
   app.post("/api/generate-audio", async (req, res) => {
     try {
@@ -313,7 +395,7 @@ Xin thầy hãy lập lá số tử vi dựa trên thông tin này và luận gi
 
       // Dọn dẹp ký tự Markdown thừa để giọng đọc tự nhiên, không bị vấp
       const cleanText = text.replace(/[#*`_:-]/g, ' ').replace(/\s+/g, ' ').trim();
-      const truncatedText = cleanText.substring(0, 5000);
+      const truncatedText = cleanText.substring(0, 30000); // Tăng giới hạn để đọc hết 12 cung
 
       // ========================================================
       // CẤU HÌNH API VIVIBE / LUCYLAB 
@@ -449,8 +531,7 @@ Xin thầy hãy lập lá số tử vi dựa trên thông tin này và luận gi
         
         // Dự phòng giọng đọc chị Google nếu Vivibe lỗi hoặc quá tải
         const fallbackBuffers: Buffer[] = [];
-        // Google Translate giới hạn ký tự đọc nên ta giới hạn đoạn dự phòng xuống 1500 để tối ưu tốc độ response
-        const fallbackText = truncatedText.substring(0, 1500);
+        const fallbackText = truncatedText; // Bỏ giới hạn, đọc toàn bộ
         const googleChunks = splitTextIntoChunks(fallbackText, 180);
         
         for (let i = 0; i < googleChunks.length; i += 6) {
