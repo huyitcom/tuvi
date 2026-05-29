@@ -527,7 +527,7 @@ Kim chỉ nam hóa giải tai ương, đón tài rước lộc dặn dò từ l�
             transition={{ duration: 0.8, ease: "easeOut" }}
           >
             <h1 className="font-serif text-5xl md:text-7xl font-medium text-[var(--color-gold-500)] mb-4 tracking-tight">
-              Thầy Bảy Xì Gòn
+              Thầy Bảy Chợ Lớn
             </h1>
             <p className="text-lg md:text-xl text-[var(--color-paper)] opacity-70 font-light max-w-2xl mx-auto">
               Cung cấp ngày giờ sinh, tỏ thiên cơ. Lão phu sẽ giúp đương số nhìn thấu 12 cung mệnh vận, thấu hiểu nhân sinh.
@@ -1030,16 +1030,16 @@ Kim chỉ nam hóa giải tai ương, đón tài rước lộc dặn dò từ l�
       {/* Screen-level full screen payment overlay modal */}
       <AnimatePresence>
         {showPayment && !isPaid && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md overflow-y-auto">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto scrollbar-none">
             <motion.div 
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="w-full max-w-md bg-[#16120e] p-6 rounded-3xl border-2 border-[var(--color-gold-500)] shadow-[0_0_50px_rgba(212,175,55,0.25)] relative my-8"
+              className="w-full max-w-md bg-[#16120e] p-4 sm:p-6 rounded-3xl border-2 border-[var(--color-gold-500)] shadow-[0_0_50px_rgba(212,175,55,0.25)] relative my-auto max-h-[94vh] flex flex-col overflow-y-auto scrollbar-thin"
             >
               <button 
                 onClick={() => setShowPayment(false)} 
-                className="absolute top-4 right-4 text-white/40 hover:text-[var(--color-gold-400)] transition-colors p-1"
+                className="absolute top-4 right-4 text-white/40 hover:text-[var(--color-gold-400)] transition-colors p-1 z-10"
                 aria-label="Đóng"
               >
                 <X className="w-6 h-6" />
@@ -1054,7 +1054,7 @@ Kim chỉ nam hóa giải tai ương, đón tài rước lộc dặn dò từ l�
                 }
               }} />
               
-              <button onClick={() => setShowPayment(false)} className="mt-6 w-full text-white/50 hover:text-[var(--color-gold-400)] transition-colors py-2.5 text-sm font-light border-t border-[var(--color-gold-500)]/15">
+              <button onClick={() => setShowPayment(false)} className="mt-4 w-full text-white/50 hover:text-[var(--color-gold-400)] transition-colors py-2 text-sm font-light border-t border-[var(--color-gold-500)]/15 shrink-0">
                 Hủy bỏ / Quay lại
               </button>
             </motion.div>
@@ -1124,11 +1124,11 @@ function PaymentScreen({ onPaidSuccess }: { onPaidSuccess: () => void }) {
 
   return (
     <div className="flex flex-col items-center justify-center">
-      <h3 className="font-serif text-2xl text-[var(--color-gold-400)] mb-2 mt-2">Dâng Lễ Mở Cung</h3>
-      <p className="text-xs text-stone-400 mb-6 font-light">Tùy hỷ 100.000đ để xem tiếp 11 cung mệnh</p>
+      <h3 className="font-serif text-2xl text-[var(--color-gold-400)] mb-1 mt-1">Dâng Lễ Mở Cung</h3>
+      <p className="text-xs text-stone-400 mb-4 font-light">Tùy hỷ 100.000đ để xem tiếp 11 cung mệnh</p>
 
       {/* Khung chứa iframe QR Code */}
-      <div className="w-full h-[760px] md:h-[800px] bg-white rounded-xl p-1 mb-6 relative overflow-hidden flex items-center justify-center shadow-[0_0_20px_rgba(212,175,55,0.3)] border-2 border-[var(--color-gold-500)]">
+      <div className="w-full h-[400px] md:h-[680px] bg-white rounded-xl p-1 mb-4 relative overflow-hidden flex items-center justify-center shadow-[0_0_20px_rgba(212,175,55,0.3)] border-2 border-[var(--color-gold-500)]">
         {checkoutUrl ? (
           <iframe 
             src={checkoutUrl} 
