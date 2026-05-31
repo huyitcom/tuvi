@@ -6,7 +6,28 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { motion, AnimatePresence } from 'motion/react';
-import { Sparkles, Loader2, Calendar, Clock, User, Volume2, Upload, X, Camera, Lock, CheckCircle, RefreshCw, Play, Pause, SkipForward, SkipBack, VolumeX, Music } from 'lucide-react';
+import { Sparkles, Loader2, Calendar, Clock, User, Volume2, Upload, X, Camera, Lock, CheckCircle, RefreshCw, Play, Pause, SkipForward, SkipBack, VolumeX, Music, BarChart3, Users, Activity, Percent, Award, Heart } from 'lucide-react';
+import { saveDivination, updatePremiumStatus, getRecentDivinations, testConnection } from './firebase';
+
+// Helper to format localized relative timestamps for our live dashboard feed
+function formatRelativeTime(date: Date): string {
+  if (!(date instanceof Date) || isNaN(date.getTime())) return "Vừa mới xong ☯️";
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffSecs = Math.floor(diffMs / 1000);
+  const diffMins = Math.floor(diffSecs / 60);
+  const diffHours = Math.floor(diffMins / 60);
+  
+  if (diffSecs < 10) return "Vừa mới xong ☯️";
+  if (diffSecs < 60) return `${diffSecs} giây trước`;
+  if (diffMins < 60) return `${diffMins} phút trước`;
+  if (diffHours < 24) return `${diffHours} giờ trước`;
+  return date.toLocaleDateString('vi-VN', { 
+    day: '2-digit', 
+    month: '2-digit',
+    year: 'numeric'
+  }) + ' lúc ' + date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+}
 
 export default function App() {
   const [gender, setGender] = useState<'Nam' | 'Nữ'>('Nam');
@@ -56,6 +77,33 @@ export default function App() {
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
   const [autoPlayNext, setAutoPlayNext] = useState(true);
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+
+  // ==========================================
+  // STATE FIRESTORE & THỐNG KÊ LƯU LƯỢNG
+  // ==========================================
+  const [currentDivinationId, setCurrentDivinationId] = useState<string | null>(null);
+  const [showStats, setShowStats] = useState(false);
+  const [statsData, setStatsData] = useState<any[]>([]);
+  const [loadingStats, setLoadingStats] = useState(false);
+
+  // Chế độ quản trị & phân quyền
+  const [showAdminButton, setShowAdminButton] = useState(false);
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(() => {
+    const auth = sessionStorage.getItem("thaybay_admin_authenticated");
+    return auth === "true" || (auth !== null && auth.length >= 24);
+  });
+  const [showAdminLoginModal, setShowAdminLoginModal] = useState(false);
+  const [tempPasscode, setTempPasscode] = useState("");
+  const [adminLoginError, setAdminLoginError] = useState("");
+
+  useEffect(() => {
+    testConnection();
+    // Kiểm tra nếu URL có chứa bùa truy cập quản trị viên `admin=true` hoặc tương đương
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("admin") === "true" || params.has("admin")) {
+      setShowAdminButton(true);
+    }
+  }, []);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -466,6 +514,25 @@ Kim chỉ nam hóa giải tai ương, đón tài rước lộc dặn dò từ l�
       if (data.zodiacImage) {
         setZodiacImage(data.zodiacImage);
       }
+
+      // Lưu chiêm viễn vào Firestore bảo bọc thống kê
+      try {
+        const divId = await saveDivination({
+          gender,
+          day,
+          month,
+          year,
+          calendar,
+          hour,
+          minute,
+          zodiacName: data.zodiacName || "Mệnh khuyết",
+          hasPortrait: !!portraitImage,
+          isPremium: false,
+        });
+        setCurrentDivinationId(divId);
+      } catch (dbErr) {
+        console.error("Lỗi lưu sổ gieo quẻ vận mệnh vào Firestore:", dbErr);
+      }
     } catch (err: any) {
       console.error(err);
       setError(err.message || "Có lỗi xảy ra trong quá trình bấm độn. Xin hãy thử lại sau.");
@@ -510,6 +577,80 @@ Kim chỉ nam hóa giải tai ương, đón tài rước lộc dặn dò từ l�
     }
   };
 
+  const loadStats = async () => {
+    setLoadingStats(true);
+    try {
+      const data = await getRecentDivinations();
+      setStatsData(data);
+    } catch (err) {
+      console.error("Lỗi khi tải dữ liệu thống kê từ hệ thống:", err);
+    } finally {
+      setLoadingStats(false);
+    }
+  };
+
+  const handleAdminVerify = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const cleanCode = tempPasscode.trim();
+    if (!cleanCode) return;
+
+    setLoadingStats(true);
+    setAdminLoginError("");
+    try {
+      const response = await fetch("/api/admin/verify-passcode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ passcode: cleanCode })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setIsAdminAuthenticated(true);
+        setShowAdminButton(true);
+        sessionStorage.setItem("thaybay_admin_authenticated", data.sessionToken || "true");
+        setShowAdminLoginModal(false);
+        setTempPasscode("");
+        setAdminLoginError("");
+        
+        // Load stats of divinations immediately for admin dashboard
+        await loadStats();
+        setShowStats(true);
+      } else {
+        const data = await response.json();
+        setAdminLoginError(data.error || "Thiên thư mật hiệu chưa đúng, xin mời nhập lại.");
+      }
+    } catch (err) {
+      console.error("Lỗi xác thực quản trị viên:", err);
+      setAdminLoginError("Không thể truyền tin mật hiệu sang máy chủ. Có lỗi kết nối xảy ra.");
+    } finally {
+      setLoadingStats(false);
+    }
+  };
+
+  // Tính toán số liệu thống kê thần số học
+  const totalQueries = statsData.length;
+  const premiumQueries = statsData.filter(d => d.isPremium).length;
+  const premiumRate = totalQueries > 0 ? ((premiumQueries / totalQueries) * 100).toFixed(1) : "0";
+
+  const maleCount = statsData.filter(d => d.gender === 'Nam').length;
+  const femaleCount = totalQueries - maleCount;
+  const malePercent = totalQueries > 0 ? ((maleCount / totalQueries) * 100).toFixed(0) : "50";
+  const femalePercent = totalQueries > 0 ? (100 - parseFloat(malePercent)).toFixed(0) : "50";
+
+  const solarCount = statsData.filter(d => d.calendar === 'Dương lịch').length;
+  const lunarCount = totalQueries - solarCount;
+  const solarPercent = totalQueries > 0 ? ((solarCount / totalQueries) * 100).toFixed(0) : "50";
+  const lunarPercent = totalQueries > 0 ? (100 - parseFloat(solarPercent)).toFixed(0) : "50";
+
+  // Thống kê con giáp
+  const zodiacCounts: Record<string, number> = {};
+  statsData.forEach(d => {
+    const rawVal = d.zodiacName || "Không rõ";
+    const cleanZodiac = rawVal.includes(':') ? rawVal.split(':')[1]?.trim() : rawVal;
+    zodiacCounts[cleanZodiac] = (zodiacCounts[cleanZodiac] || 0) + 1;
+  });
+  const sortedZodiacs = Object.entries(zodiacCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
+
   return (
     <div className="min-h-screen bg-mystical-pattern text-[var(--color-paper)] font-sans selection:bg-[var(--color-gold-500)] selection:text-black">
       {/* Mystical Background Elements */}
@@ -526,12 +667,41 @@ Kim chỉ nam hóa giải tai ương, đón tài rước lộc dặn dò từ l�
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, ease: "easeOut" }}
           >
-            <h1 className="font-serif text-5xl md:text-7xl font-medium text-[var(--color-gold-500)] mb-4 tracking-tight">
+            <h1 
+              onDoubleClick={() => {
+                setTempPasscode("");
+                setAdminLoginError("");
+                setShowAdminLoginModal(true);
+              }}
+              title="Nhấp đúp chuột để cấu hình quản trị viên"
+              className="font-serif text-5xl md:text-7xl font-medium text-[var(--color-gold-500)] mb-4 tracking-tight select-none cursor-pointer"
+            >
               Thầy Bảy Chợ Lớn
             </h1>
             <p className="text-lg md:text-xl text-[var(--color-paper)] opacity-70 font-light max-w-2xl mx-auto">
               Cung cấp ngày giờ sinh, tỏ thiên cơ. Lão phu sẽ giúp đương số nhìn thấu 12 cung mệnh vận, thấu hiểu nhân sinh.
             </p>
+            {showAdminButton && (
+              <div className="mt-6 flex justify-center">
+                <button 
+                  onClick={() => {
+                    if (isAdminAuthenticated) {
+                      loadStats();
+                      setShowStats(true);
+                    } else {
+                      setTempPasscode("");
+                      setAdminLoginError("");
+                      setShowAdminLoginModal(true);
+                    }
+                  }} 
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-[var(--color-mystic-700)] border border-[var(--color-gold-500)]/30 text-[var(--color-gold-400)] text-sm font-serif transition-all hover:border-[var(--color-gold-500)] hover:bg-[var(--color-gold-600)]/15 active:translate-y-px cursor-pointer"
+                  id="btn-destiny-stats"
+                >
+                  <BarChart3 className="w-4 h-4 text-[var(--color-gold-400)]" />
+                  Lưu Lượng Thần Số (Báo Cáo Gieo Quẻ) - Admin
+                </button>
+              </div>
+            )}
           </motion.div>
         </header>
 
@@ -660,7 +830,7 @@ Kim chỉ nam hóa giải tai ương, đón tài rước lộc dặn dò từ l�
                         {loading ? (
                           <><Loader2 className="w-6 h-6 animate-spin" /> Lão phu đang chiêm nghiệm tinh tú...</>
                         ) : (
-                          <><Sparkles className="w-6 h-6 animate-pulse" /> Xem Quẻ Ngay</>
+                          <><Sparkles className="w-6 h-6 text-[var(--color-gold-400)]" /> Xem Quẻ Ngay</>
                         )}
                       </span>
                     </button>
@@ -717,7 +887,7 @@ Kim chỉ nam hóa giải tai ương, đón tài rước lộc dặn dò từ l�
                             <div className="absolute inset-4 rounded-full border border-double border-[var(--color-gold-500)]/15"></div>
                             
                             <div className="relative z-10 text-center px-4">
-                              <span className="block text-4xl mb-1 filter drop-shadow-[0_0_10px_rgba(212,175,55,0.7)] animate-pulse">☯️</span>
+                              <span className="block text-4xl mb-1 filter drop-shadow-[0_0_10px_rgba(212,175,55,0.7)]">☯️</span>
                               <span className="block text-[11px] uppercase tracking-[0.2em] text-[var(--color-gold-400)] font-sans opacity-80">Bản Mệnh</span>
                               <span className="block text-lg font-serif text-[var(--color-paper)] font-medium mt-1 truncate max-w-[130px]">
                                 {zodiacName ? (zodiacName.includes(':') ? zodiacName.split(':')[1]?.trim() : zodiacName) : 'Gieo Số'}
@@ -746,9 +916,9 @@ Kim chỉ nam hóa giải tai ương, đón tài rước lộc dặn dò từ l�
                       <div className="flex flex-col md:flex-row items-center justify-between gap-4">
                         {/* Current Playing Indicator */}
                         <div className="flex items-center gap-3 w-full md:w-auto">
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isAudioPlaying ? 'bg-[var(--color-gold-500)]/20 text-[var(--color-gold-400)] border border-[var(--color-gold-400)]/30 animate-pulse' : 'bg-black/30 text-white/40'}`}>
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${isAudioPlaying ? 'bg-[var(--color-gold-500)]/20 text-[var(--color-gold-400)] border border-[var(--color-gold-400)]/50 shadow-[0_0_8px_rgba(212,175,55,0.3)]' : 'bg-black/30 text-white/40 border border-white/5'}`}>
                             {isAudioPlaying ? (
-                              <Volume2 className="w-5 h-5 animate-bounce" />
+                              <Volume2 className="w-5 h-5 text-[var(--color-gold-400)]" />
                             ) : (
                               <Music className="w-5 h-5" />
                             )}
@@ -827,7 +997,7 @@ Kim chỉ nam hóa giải tai ương, đón tài rước lộc dặn dò từ l�
                             onClick={() => setAutoPlayNext(!autoPlayNext)}
                             className={`px-3 py-1.5 rounded-full border text-xs font-serif transition-colors flex items-center gap-1.5 ${autoPlayNext ? 'bg-[var(--color-gold-600)]/15 border-[var(--color-gold-500)] text-[var(--color-gold-400)]' : 'bg-black/20 border-white/10 text-white/40'}`}
                           >
-                            <span className={`w-2 h-2 rounded-full ${autoPlayNext ? 'bg-[var(--color-gold-400)] animate-ping' : 'bg-white/20'}`}></span>
+                            <span className={`w-2 h-2 rounded-full ${autoPlayNext ? 'bg-[var(--color-gold-400)] shadow-[0_0_4px_var(--color-gold-400)]' : 'bg-white/20'}`}></span>
                             Tự động chuyển cung: {autoPlayNext ? 'Bật' : 'Tắt'}
                           </button>
                         </div>
@@ -836,7 +1006,7 @@ Kim chỉ nam hóa giải tai ương, đón tài rước lộc dặn dò từ l�
                       {/* Web speech loading fallback label */}
                       {isSynthesizingClient && (
                         <div className="mt-3 text-center text-xs text-white/50 italic flex items-center justify-center gap-2 border-t border-white/5 pt-2">
-                          <span className="w-2 h-2 rounded-full bg-[var(--color-gold-400)] animate-ping" /> {syntheticStatus || 'Thầy đang truyền âm đọc cung số bằng thần thanh bản địa...'}
+                          <span className="w-2 h-2 rounded-full bg-[var(--color-gold-400)] shadow-[0_0_4px_var(--color-gold-400)] animate-pulse" /> {syntheticStatus || 'Thầy đang truyền âm đọc cung số bằng thần thanh bản địa...'}
                         </div>
                       )}
 
@@ -860,7 +1030,7 @@ Kim chỉ nam hóa giải tai ương, đón tài rước lộc dặn dò từ l�
                               {isSecLoading ? (
                                 <Loader2 className="w-3 h-3 animate-spin text-[var(--color-gold-400)]" />
                               ) : isCurrent && isAudioPlaying ? (
-                                <Pause className="w-2.5 h-2.5 fill-current animate-pulse text-[var(--color-gold-400)]" />
+                                <Pause className="w-2.5 h-2.5 fill-current text-[var(--color-gold-400)]" />
                               ) : sec.isPremium && !isPaid ? (
                                 <Lock className="w-2.5 h-2.5 text-white/30" />
                               ) : (
@@ -1046,9 +1216,16 @@ Kim chỉ nam hóa giải tai ương, đón tài rước lộc dặn dò từ l�
               </button>
 
               {/* COMPONENT THANH TOÁN THẬT */}
-              <PaymentScreen onPaidSuccess={() => {
+              <PaymentScreen onPaidSuccess={async () => {
                 setIsPaid(true);
                 setShowPayment(false);
+                if (currentDivinationId) {
+                  try {
+                    await updatePremiumStatus(currentDivinationId);
+                  } catch (dbErr) {
+                    console.error("Lỗi đồng bộ dâng lễ lên Firestore:", dbErr);
+                  }
+                }
                 if (result) {
                   fetchPremiumResult(result);
                 }
@@ -1057,6 +1234,247 @@ Kim chỉ nam hóa giải tai ương, đón tài rước lộc dặn dò từ l�
               <button onClick={() => setShowPayment(false)} className="mt-4 w-full text-white/50 hover:text-[var(--color-gold-400)] transition-colors py-2 text-sm font-light border-t border-[var(--color-gold-500)]/15 shrink-0">
                 Hủy bỏ / Quay lại
               </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Thống kê lưu lượng và chi tiết gieo quẻ */}
+      <AnimatePresence>
+        {showStats && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto scrollbar-none">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="w-full max-w-2xl bg-[#16120e] p-5 sm:p-8 rounded-3xl border-2 border-[var(--color-gold-500)] shadow-[0_0_50px_rgba(212,175,55,0.25)] relative my-auto max-h-[90vh] flex flex-col overflow-hidden"
+            >
+              <button 
+                onClick={() => setShowStats(false)} 
+                className="absolute top-4 right-4 text-white/40 hover:text-[var(--color-gold-400)] transition-colors p-1"
+                aria-label="Đóng"
+              >
+                <X className="w-6 h-6" />
+              </button>
+
+              <div className="flex items-center gap-3 border-b border-[var(--color-gold-500)]/15 pb-4 mb-5 shrink-0">
+                <BarChart3 className="w-7 h-7 text-[var(--color-gold-400)]" />
+                <div className="text-left">
+                  <h3 className="font-serif text-2xl text-[var(--color-gold-400)]">Lưu Lượng Thần Số</h3>
+                  <p className="text-xs text-stone-400 font-light">Thống kê chi tiết các lượt bấm độn gieo quẻ trên hệ thống</p>
+                </div>
+              </div>
+
+              {loadingStats ? (
+                <div className="flex-1 flex flex-col items-center justify-center py-20 gap-3">
+                  <Loader2 className="w-10 h-10 text-[var(--color-gold-400)] animate-spin" />
+                  <p className="text-sm text-white/50 italic font-serif">Thầy đang lục lọi sổ vận thiên tào để cập nhật số liệu...</p>
+                </div>
+              ) : (
+                <div className="flex-1 overflow-y-auto pr-1 space-y-6 scrollbar-thin text-left">
+                  {/* HẠNG MỤC TỔNG QUAN */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="bg-black/30 border border-white/5 p-4 rounded-2xl text-center">
+                      <Users className="w-5 h-5 text-[var(--color-gold-500)] mx-auto mb-1.5" />
+                      <div className="text-xs text-stone-400 font-light mb-0.5">Tổng Lượt Gieo Quẻ</div>
+                      <div className="text-2xl font-mono text-[var(--color-paper)] font-bold">{totalQueries}</div>
+                    </div>
+                    
+                    <div className="bg-black/30 border border-white/5 p-4 rounded-2xl text-center">
+                      <Award className="w-5 h-5 text-[var(--color-gold-500)] mx-auto mb-1.5" />
+                      <div className="text-xs text-stone-400 font-light mb-0.5">Đã Dâng Lễ (VIP)</div>
+                      <div className="text-2xl font-mono text-[var(--color-paper)] font-bold">{premiumQueries}</div>
+                    </div>
+
+                    <div className="bg-black/30 border border-white/5 p-4 rounded-2xl text-center">
+                      <Percent className="w-5 h-5 text-[var(--color-gold-500)] mx-auto mb-1.5" />
+                      <div className="text-xs text-stone-400 font-light mb-0.5">Tỷ Lệ Thành Kính</div>
+                      <div className="text-2xl font-mono text-[var(--color-paper)] font-bold">{premiumRate}%</div>
+                    </div>
+                  </div>
+
+                  {/* THỐNG KÊ CHI TIẾT DỮ LIỆU */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    {/* GIỚI TÍNH & LỊCH TRÌNH */}
+                    <div className="space-y-4 bg-black/20 p-4 rounded-2xl border border-white/5">
+                      <h4 className="font-serif text-sm text-[var(--color-gold-400)] flex items-center gap-2 border-b border-white/5 pb-2">
+                        <Activity className="w-4 h-4" /> Đặc Trưng Đương Số
+                      </h4>
+                      
+                      {/* Gender Ratio */}
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between text-xs font-light text-stone-300">
+                          <span>Giới Tính (Nam / Nữ)</span>
+                          <span>{malePercent}% / {femalePercent}%</span>
+                        </div>
+                        <div className="h-2 rounded-full bg-stone-800 overflow-hidden flex">
+                          <div className="bg-blue-500 h-full transition-all" style={{ width: `${malePercent}%` }}></div>
+                          <div className="bg-pink-500 h-full transition-all" style={{ width: `${femalePercent}%` }}></div>
+                        </div>
+                      </div>
+
+                      {/* Calendar Ratio */}
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between text-xs font-light text-stone-300">
+                          <span>Lịch Sử Dụng (Dương / Âm)</span>
+                          <span>{solarPercent}% / {lunarPercent}%</span>
+                        </div>
+                        <div className="h-2 rounded-full bg-stone-800 overflow-hidden flex">
+                          <div className="bg-[var(--color-gold-500)] h-full transition-all" style={{ width: `${solarPercent}%` }}></div>
+                          <div className="bg-purple-600 h-full transition-all" style={{ width: `${lunarPercent}%` }}></div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* CON GIÁP THẮNH THỊNH */}
+                    <div className="space-y-4 bg-black/20 p-4 rounded-2xl border border-white/5">
+                      <h4 className="font-serif text-sm text-[var(--color-gold-400)] flex items-center gap-2 border-b border-white/5 pb-2">
+                        <Heart className="w-4 h-4" /> Các Bản Mệnh Phổ Biến
+                      </h4>
+                      {sortedZodiacs.length > 0 ? (
+                        <div className="space-y-2.5">
+                          {sortedZodiacs.map(([zName, count]: [string, any], idx) => {
+                            const ratio = totalQueries > 0 ? Math.round((count / totalQueries) * 100) : 0;
+                            return (
+                              <div key={idx} className="space-y-1">
+                                <div className="flex justify-between text-xs font-light text-stone-300">
+                                  <span className="truncate max-w-[140px]">{zName}</span>
+                                  <span>{count} lượt ({ratio}%)</span>
+                                </div>
+                                <div className="h-1.5 rounded-full bg-stone-800 overflow-hidden">
+                                  <div className="bg-[var(--color-gold-600)] h-full" style={{ width: `${ratio}%` }}></div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="text-xs text-stone-500 text-center py-4 italic font-light">Chưa có đủ số liệu thống kê</div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* LỊCH SỬ GIEO QUẺ TRỰC TUYẾN */}
+                  <div className="space-y-3">
+                    <h4 className="font-serif text-sm text-[var(--color-gold-400)] flex items-center gap-2 border-b border-white/5 pb-2">
+                      <Clock className="w-4 h-4" /> Nhật Ký Gieo Quẻ Đồng Đạo (Live)
+                    </h4>
+                    
+                    {statsData.length === 0 ? (
+                      <div className="text-xs text-stone-500 text-center py-8 italic font-light">Chưa có lượt gieo quẻ nào được lưu lại.</div>
+                    ) : (
+                      <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                        {statsData.map((record, idx) => (
+                          <div key={record.id || idx} className="bg-black/20 border border-white/5 hover:border-white/10 px-3.5 py-3 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 transition-all">
+                            <div className="flex items-center gap-3">
+                              <span className="text-sm text-[var(--color-gold-400)]">
+                                {record.gender === "Nam" ? "♂️" : "♀️"}
+                              </span>
+                              <div>
+                                <div className="text-xs font-medium text-stone-100 flex items-center gap-1.5 flex-wrap">
+                                  Đương số {record.gender} ({record.day}/{record.month}/{record.year} • {record.calendar}) - Giờ {record.hour}:{record.minute}
+                                  {record.isPremium && (
+                                    <span className="text-[10px] bg-[var(--color-gold-500)]/20 text-[var(--color-gold-400)] px-1.5 py-0.5 rounded-full border border-[var(--color-gold-400)]/30 inline-flex items-center gap-0.5 font-light shrink-0">
+                                      👑 Dâng Lễ
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-[11px] text-stone-400 font-serif mt-0.5">
+                                  {record.zodiacName} {record.hasPortrait && "• Có chụp diện lý"}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="text-[10px] text-stone-500 font-mono sm:text-right shrink-0">
+                              {formatRelativeTime(record.createdAt)}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="border-t border-[var(--color-gold-500)]/15 pt-4 mt-4 text-center shrink-0">
+                <button 
+                  onClick={() => setShowStats(false)} 
+                  className="px-6 py-2 rounded-full bg-[var(--color-gold-600)]/15 border border-[var(--color-gold-500)]/30 text-[var(--color-gold-400)] text-xs font-serif transition-colors hover:bg-[var(--color-gold-500)]/20 hover:border-[var(--color-gold-500)] cursor-pointer"
+                >
+                  Khấu đầu rời cung thống kê
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal đăng nhập Quản Trị Viên */}
+      <AnimatePresence>
+        {showAdminLoginModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="w-full max-w-md bg-[#16120e] p-6 sm:p-8 rounded-3xl border-2 border-[var(--color-gold-500)] shadow-[0_0_50px_rgba(212,175,55,0.3)] relative text-left"
+            >
+              <button 
+                onClick={() => {
+                  setShowAdminLoginModal(false);
+                  setTempPasscode("");
+                  setAdminLoginError("");
+                }} 
+                className="absolute top-4 right-4 text-white/40 hover:text-[var(--color-gold-400)] transition-colors p-1"
+                aria-label="Đóng"
+              >
+                <X className="w-6 h-6" />
+              </button>
+
+              <div className="text-center mb-6">
+                <span className="inline-block text-4xl mb-2 filter drop-shadow-[0_0_8px_rgba(212,175,55,0.5)]">🔑</span>
+                <h3 className="font-serif text-2xl text-[var(--color-gold-400)]">Truyền Âm Nhập Điện</h3>
+                <p className="text-xs text-stone-400 font-light mt-1">Xin mời quản trị viên nhập thiên thư mật hiệu để mở điện</p>
+              </div>
+
+              <form onSubmit={handleAdminVerify} className="space-y-4">
+                <div>
+                  <label className="block text-xs uppercase tracking-wider text-stone-400 mb-1.5 font-sans font-light">Mật mã quản trị</label>
+                  <input 
+                    type="password"
+                    value={tempPasscode}
+                    onChange={(e) => setTempPasscode(e.target.value)}
+                    placeholder="Nhập thiên thư mật hiệu..."
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-stone-200 text-sm focus:outline-none focus:border-[var(--color-gold-500)] focus:ring-1 focus:ring-[var(--color-gold-500)]/30 font-mono text-center tracking-widest"
+                    autoFocus
+                  />
+                </div>
+
+                {adminLoginError && (
+                  <div className="text-xs text-red-400 italic text-center font-serif leading-relaxed">
+                    ⚠️ {adminLoginError}
+                  </div>
+                )}
+
+                <div className="pt-2 flex gap-3">
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      setShowAdminLoginModal(false);
+                      setTempPasscode("");
+                      setAdminLoginError("");
+                    }}
+                    className="flex-1 py-2.5 rounded-xl bg-white/5 border border-white/10 text-stone-300 text-xs font-serif transition-colors hover:bg-white/10"
+                  >
+                    Rút lui
+                  </button>
+                  <button 
+                    type="submit"
+                    className="flex-1 py-2.5 rounded-xl bg-[var(--color-gold-600)]/20 border border-[var(--color-gold-500)]/45 text-[var(--color-gold-400)] text-xs font-serif transition-all hover:bg-[var(--color-gold-500)]/35 hover:border-[var(--color-gold-500)] active:translate-y-px"
+                  >
+                    Xác nhận mật hiệu
+                  </button>
+                </div>
+              </form>
             </motion.div>
           </div>
         )}

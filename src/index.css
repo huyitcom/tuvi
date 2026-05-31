@@ -26,7 +26,7 @@ body {
   background-image: url("data:image/svg+xml,%3Csvg width='200' height='200' viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cg stroke='%23d4af37' stroke-opacity='0.08' stroke-width='1' fill='none'%3E%3Cpath d='M100 0v200M0 100h200M29.29 29.29l141.42 141.42M170.71 29.29L29.29 170.71'/%3E%3Ccircle cx='100' cy='100' r='40'/%3E%3Ccircle cx='100' cy='100' r='70'/%3E%3Ccircle cx='100' cy='100' r='90'/%3E%3C/g%3E%3Ccircle cx='100' cy='10' r='1.5' fill='%23d4af37' fill-opacity='0.2'/%3E%3Ccircle cx='100' cy='190' r='1.5' fill='%23d4af37' fill-opacity='0.2'/%3E%3Ccircle cx='10' cy='100' r='1.5' fill='%23d4af37' fill-opacity='0.2'/%3E%3Ccircle cx='190' cy='100' r='1.5' fill='%23d4af37' fill-opacity='0.2'/%3E%3C/svg%3E");
   background-size: 300px 300px;
   background-position: center center;
-  background-attachment: fixed;
+  background-attachment: scroll;
 }
 
 .markdown-body {

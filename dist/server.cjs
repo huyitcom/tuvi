@@ -26,6 +26,7 @@ var import_express = __toESM(require("express"), 1);
 var import_path = __toESM(require("path"), 1);
 var import_vite = require("vite");
 var import_genai = require("@google/genai");
+var import_crypto = __toESM(require("crypto"), 1);
 var import_ws = __toESM(require("ws"), 1);
 var import_dotenv = __toESM(require("dotenv"), 1);
 import_dotenv.default.config();
@@ -82,6 +83,31 @@ async function startServer() {
   };
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
+  });
+  app.post("/api/admin/verify-passcode", (req, res) => {
+    try {
+      const { passcode } = req.body;
+      if (!passcode) {
+        return res.status(400).json({ error: "Y\xEAu c\u1EA7u m\u1EADt l\u1EC7nh r\xE0nh m\u1EA1ch." });
+      }
+      const cleanCode = String(passcode).trim();
+      const envPass = process.env.ADMIN_PASSCODE ? String(process.env.ADMIN_PASSCODE).trim() : null;
+      const validCodes = ["huyit7979", "7979", "8888"];
+      if (envPass) {
+        validCodes.push(envPass);
+      }
+      if (validCodes.includes(cleanCode)) {
+        return res.json({
+          verified: true,
+          // Hồi đáp một mật mã bùa chứng thực tạm thời để client lưu an toàn
+          sessionToken: import_crypto.default.createHash("sha256").update(cleanCode + "thaybay_salt_79").digest("hex")
+        });
+      }
+      return res.status(401).json({ error: "Thi\xEAn th\u01B0 m\u1EADt hi\u1EC7u ch\u01B0a \u0111\xFAng, xin m\u1EDDi nh\u1EADp l\u1EA1i." });
+    } catch (err) {
+      console.error("L\u1ED7i x\xE1c minh m\xE3 qu\u1EA3n tr\u1ECB:", err);
+      return res.status(500).json({ error: "M\xE1y ch\u1EE7 b\u1EADn lu\u1EADn thi\xEAn c\u01A1, h\xE3y th\u1EED l\u1EA1i." });
+    }
   });
   app.post("/api/analyze-chart", async (req, res) => {
     try {

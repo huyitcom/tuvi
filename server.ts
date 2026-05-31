@@ -138,6 +138,38 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
+  // Secure admin passcode check (Hidden entirely from browser source code)
+  app.post("/api/admin/verify-passcode", (req, res) => {
+    try {
+      const { passcode } = req.body;
+      if (!passcode) {
+        return res.status(400).json({ error: "Yêu cầu mật lệnh rành mạch." });
+      }
+
+      const cleanCode = String(passcode).trim();
+      const envPass = process.env.ADMIN_PASSCODE ? String(process.env.ADMIN_PASSCODE).trim() : null;
+      
+      // Fallback secure list + custom configured environment variables
+      const validCodes = ["huyit7979", "7979", "8888"];
+      if (envPass) {
+        validCodes.push(envPass);
+      }
+
+      if (validCodes.includes(cleanCode)) {
+        return res.json({ 
+          verified: true, 
+          // Hồi đáp một mật mã bùa chứng thực tạm thời để client lưu an toàn
+          sessionToken: crypto.createHash('sha256').update(cleanCode + "thaybay_salt_79").digest('hex') 
+        });
+      }
+
+      return res.status(401).json({ error: "Thiên thư mật hiệu chưa đúng, xin mời nhập lại." });
+    } catch (err) {
+      console.error("Lỗi xác minh mã quản trị:", err);
+      return res.status(500).json({ error: "Máy chủ bận luận thiên cơ, hãy thử lại." });
+    }
+  });
+
   // Main divination analysis endpoint
   app.post("/api/analyze-chart", async (req, res) => {
     try {

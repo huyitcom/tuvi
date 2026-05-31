@@ -1,0 +1,63 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net default catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Secure helper functions
+    function isValidId(id) {
+      return id is string && id.size() <= 64 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Strict validator for Divination input data
+    function isValidDivination(data) {
+      return data.keys().hasAll(['gender', 'day', 'month', 'year', 'calendar', 'hour', 'minute', 'zodiacName', 'hasPortrait', 'isPremium', 'createdAt'])
+        && data.keys().size() == 11
+        && data.gender is string && (data.gender == 'Nam' || data.gender == 'Nữ')
+        && data.day is string && data.day.size() <= 2
+        && data.month is string && data.month.size() <= 2
+        && data.year is string && data.year.size() <= 4
+        && data.calendar is string && (data.calendar == 'Dương lịch' || data.calendar == 'Âm lịch')
+        && data.hour is string && data.hour.size() <= 2
+        && data.minute is string && data.minute.size() <= 2
+        && data.zodiacName is string && data.zodiacName.size() <= 100
+        && data.hasPortrait is bool
+        && data.isPremium is bool
+        && (data.createdAt is timestamp);
+    }
+
+    // Rules for the divinations collection
+    match /divinations/{divinationId} {
+      // Allow reading a specific document by its direct ID
+      allow get: if true;
+      
+      // Allow listing to calculate aggregate statistics and show the live mystical divination feed
+      allow list: if true;
+      
+      // Allow creation only if the schema is strictly valid and uses the server timestamp
+      allow create: if isValidId(divinationId) 
+        && isValidDivination(incoming()) 
+        && incoming().createdAt == request.time;
+        
+      // Allow updating ONLY the isPremium field when unlocking premium content
+      allow update: if isValidId(divinationId)
+        && isValidDivination(incoming())
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['isPremium'])
+        && incoming().isPremium == true;
+
+      // Prevent document deletion entirely to protect transaction logs
+      allow delete: if false;
+    }
+  }
+}

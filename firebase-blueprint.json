@@ -1,0 +1,75 @@
+{
+  "entities": {
+    "Divination": {
+      "title": "Divination",
+      "description": "Thống kê lượt nhập quẻ và thông tin của đương số",
+      "type": "object",
+      "properties": {
+        "gender": {
+          "type": "string",
+          "description": "Giới tính của đương số"
+        },
+        "day": {
+          "type": "string",
+          "description": "Ngày sinh"
+        },
+        "month": {
+          "type": "string",
+          "description": "Tháng sinh"
+        },
+        "year": {
+          "type": "string",
+          "description": "Năm sinh"
+        },
+        "calendar": {
+          "type": "string",
+          "description": "Loại lịch (Dương lịch hoặc Âm lịch)"
+        },
+        "hour": {
+          "type": "string",
+          "description": "Giờ sinh"
+        },
+        "minute": {
+          "type": "string",
+          "description": "Phút sinh"
+        },
+        "zodiacName": {
+          "type": "string",
+          "description": "Bản mệnh / Con giáp"
+        },
+        "hasPortrait": {
+          "type": "boolean",
+          "description": "Có tải ảnh chân dung lên hay không"
+        },
+        "isPremium": {
+          "type": "boolean",
+          "description": "Đã thanh toán dâng lễ mở cung hay chưa"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Thời gian gieo quẻ"
+        }
+      },
+      "required": [
+        "gender",
+        "day",
+        "month",
+        "year",
+        "calendar",
+        "hour",
+        "minute",
+        "zodiacName",
+        "hasPortrait",
+        "isPremium",
+        "createdAt"
+      ]
+    }
+  },
+  "firestore": {
+    "divinations/{divinationId}": {
+      "schema": "Divination",
+      "description": "Danh sách các lượt gieo quẻ lưu tại hệ thống"
+    }
+  }
+}
