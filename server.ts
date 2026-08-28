@@ -1,608 +1,392 @@
-import express from "express";
-import path from "path";
-import { createServer as createViteServer } from "vite";
-import { GoogleGenAI } from "@google/genai";
-import crypto from "crypto";
-import WebSocket from "ws";
-import dotenv from "dotenv";
+import express from 'express';
+import path from 'path';
+import fs from 'fs';
+import { createServer as createViteServer } from 'vite';
+import nodemailer from 'nodemailer';
 
-dotenv.config();
+interface OrderPayload {
+  groomName?: string;
+  brideName?: string;
+  connector?: string;
+  weddingDate?: string;
+  size?: string;
+  materialId?: string;
+  materialName?: string;
+  customerName?: string;
+  customerPhone?: string;
+  customerEmail?: string;
+  customerAddress?: string;
+  notes?: string;
+  designImageData?: string | null;
+  timestamp?: string;
+}
 
-async function generateEdgeTts(text: string, voice = 'vi-VN-NamMinhNeural'): Promise<Buffer> {
-    const TRUSTED_CLIENT_TOKEN = '6A5AA1D4EAFF4E9FB37E23D68491D6F4';
-    const WINDOWS_FILE_TIME_EPOCH = 11644473600n;
-    const ticks = BigInt(Math.floor((Date.now() / 1000) + Number(WINDOWS_FILE_TIME_EPOCH))) * 10000000n;
-    const roundedTicks = ticks - (ticks % 3000000000n);
-    const hash = crypto.createHash('sha256').update(`${roundedTicks}${TRUSTED_CLIENT_TOKEN}`, 'ascii').digest('hex').toUpperCase();
+// Ensure uploads folder exists
+const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
+if (!fs.existsSync(UPLOADS_DIR)) {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
 
-    const CHROMIUM_FULL_VERSION = '143.0.3650.75';
-    const wsUrl = `wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=${TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC=${hash}&Sec-MS-GEC-Version=1-${CHROMIUM_FULL_VERSION}`;
+// SMTP Configuration from Photobook Vietnam
+const SMTP_CONFIG = {
+  host: process.env.SMTP_HOST || 'smtp.gmail.com',
+  port: parseInt(process.env.SMTP_PORT || '465', 10),
+  secure: true,
+  user: process.env.SMTP_USER || 'photobookvietnam.net@gmail.com',
+  pass: process.env.SMTP_PASS || 'pmgy mera pmts gfgp',
+};
 
-    return new Promise((resolve, reject) => {
-        const ws = new WebSocket(wsUrl, {
-            origin: 'chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold',
-            headers: {
-                'User-Agent': `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROMIUM_FULL_VERSION.split('.')[0]}.0.0.0 Safari/537.36 Edg/${CHROMIUM_FULL_VERSION.split('.')[0]}.0.0.0`
-            }
-        });
+// Target Notification Emails
+const TARGET_EMAILS = [
+  process.env.ADMIN_EMAIL || 'huyitcom@gmail.com',
+  'photobookvietnam.net@gmail.com',
+];
 
-        const audioChunks: Buffer[] = [];
-        let timeOut = setTimeout(() => { ws.close(); reject(new Error('TTS Timeout')); }, 30000);
+// Generate Order Email HTML Template with Direct Print Download Link & Preview
+function generateOrderEmailHtml(
+  order: OrderPayload,
+  hasImageAttachment: boolean,
+  fileName?: string,
+  downloadUrl?: string
+): { subject: string; html: string; text: string } {
+  const groom = order.groomName || 'Chú rể';
+  const bride = order.brideName || 'Cô dâu';
+  const weddingDate = order.weddingDate || 'Chưa rõ';
+  const size = order.size || '60 x 90 cm (Khổ Đứng Chuẩn)';
+  const material = order.materialName || 'Ảnh Cổng Ép Gỗ';
+  const name = order.customerName || 'Chưa cung cấp';
+  const phone = order.customerPhone || 'Chưa cung cấp';
+  const email = order.customerEmail || 'Không có';
+  const address = order.customerAddress || 'Tư vấn giao hàng tận nơi';
+  const notes = order.notes || 'Không có';
 
-        ws.on('open', () => {
-            ws.send(`Content-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n{"context":{"synthesis":{"audio":{"metadataoptions":{"sentenceBoundaryEnabled":"false","wordBoundaryEnabled":"true"},"outputFormat":"audio-24khz-48kbitrate-mono-mp3"}}}}`);
-            
-            const reqId = crypto.randomBytes(16).toString('hex');
-            const escapeXml = (s: string) => s.replace(/[<>&"']/g, c => ({'<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;'}[c] || c));
-            const ssml = `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="vi-VN"><voice name="${voice}"><prosody rate="-5%" pitch="-5%">${escapeXml(text)}</prosody></voice></speak>`;
-            
-            ws.send(`X-RequestId:${reqId}\r\nContent-Type:application/ssml+xml\r\nPath:ssml\r\n\r\n${ssml}`);
-        });
+  const now = new Date();
+  const timeString = now.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
 
-        ws.on('message', (data: Buffer, isBinary: boolean) => {
-            if (isBinary) {
-                const sep = 'Path:audio\r\n';
-                const idx = data.indexOf(sep);
-                if (idx !== -1) {
-                    const audio = data.subarray(idx + sep.length);
-                    if (audio.length > 0) audioChunks.push(audio);
-                }
-            } else {
-                const msg = data.toString();
-                if (msg.includes('Path:turn.end')) {
-                    clearTimeout(timeOut);
-                    ws.close();
-                    resolve(Buffer.concat(audioChunks));
-                }
-            }
-        });
+  const subject = `🔔 [ĐƠN ĐẶT IN ẢNH CỔNG CƯỚI] ${groom} & ${bride} - SĐT: ${phone}`;
 
-        ws.on('error', (err: any) => {
-            clearTimeout(timeOut);
-            reject(err);
-        });
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #1c1917; background-color: #f5f5f4; margin: 0; padding: 20px; }
+    .card { max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e7e5e4; box-shadow: 0 4px 14px rgba(0,0,0,0.06); }
+    .header { background: linear-gradient(135deg, #0284c7, #0ea5e9); padding: 24px 28px; color: #ffffff; }
+    .header h1 { margin: 0 0 6px 0; font-size: 20px; font-weight: 700; }
+    .header p { margin: 0; font-size: 13px; color: #e0f2fe; }
+    .body { padding: 24px 28px; }
+    .section-title { font-size: 13px; font-weight: 700; color: #0369a1; text-transform: uppercase; letter-spacing: 0.5px; margin: 20px 0 10px 0; border-bottom: 2px solid #e0f2fe; padding-bottom: 4px; }
+    .section-title:first-child { margin-top: 0; }
+    .table { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 14px; }
+    .table td { padding: 8px 0; border-bottom: 1px solid #f5f5f4; vertical-align: top; }
+    .table td.label { width: 150px; color: #78716c; font-weight: 500; }
+    .table td.value { color: #1c1917; font-weight: 600; }
+    .highlight { color: #0284c7; font-weight: 700; }
+    .image-preview-container { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; margin: 16px 0; text-align: center; }
+    .image-preview-container img { max-width: 100%; max-height: 440px; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border: 1px solid #cbd5e1; }
+    .btn-container { margin: 22px 0 10px 0; text-align: center; }
+    .btn-download { display: inline-block; background: #0284c7; color: #ffffff; text-decoration: none; padding: 13px 26px; border-radius: 10px; font-size: 14px; font-weight: 700; margin-bottom: 10px; box-shadow: 0 2px 5px rgba(2,132,199,0.3); }
+    .btn-zalo { display: inline-block; background: #0068ff; color: #ffffff; text-decoration: none; padding: 11px 22px; border-radius: 10px; font-size: 13px; font-weight: 600; }
+    .badge-optimized { display: inline-block; background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 6px; margin-top: 6px; }
+    .footer { background: #fafaf9; padding: 16px 28px; font-size: 12px; color: #a8a29e; text-align: center; border-top: 1px solid #f5f5f4; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <h1>🔔 CÓ ĐƠN ĐẶT IN ẢNH CỔNG CƯỚI MỚI</h1>
+      <p>Ghi nhận tự động từ ứng dụng Thiết Kế & Đặt In Ảnh Cổng Cưới Photobook Vietnam</p>
+    </div>
+    <div class="body">
+      ${
+        hasImageAttachment
+          ? `
+      <div class="section-title">🖼 BẢN THIẾT KẾ ĐÍNH KÈM (TỐI ƯU HÓA ĐỂ IN ẤN)</div>
+      <div class="image-preview-container">
+        <img src="cid:designImagePreview" alt="Bản thiết kế ảnh cổng cưới" />
+        <div style="margin-top: 10px;">
+          <span class="badge-optimized">✓ ĐÃ TỐI ƯU NÉN NHẸ & SẮC NÉT (JPG/WEBP)</span>
+        </div>
+        <p style="margin: 10px 0 0 0; font-size: 12px; color: #64748b;">
+          📎 <b>File đính kèm:</b> <code>${fileName || 'Anh_Cong_Cuoi_ThietKe.jpg'}</code>
+        </p>
+        ${
+          downloadUrl
+            ? `
+        <div style="margin-top: 14px;">
+          <a href="${downloadUrl}" class="btn-download" target="_blank">
+            📥 BẤM ĐỂ TẢI FILE GỐC ĐỘ NÉT CAO
+          </a>
+        </div>
+        `
+            : ''
+        }
+      </div>
+      `
+          : ''
+      }
+
+      <div class="section-title">THÔNG TIN SẢN PHẨM IN</div>
+      <table class="table">
+        <tr>
+          <td class="label">Dâu Rể:</td>
+          <td class="value highlight">${groom} & ${bride}</td>
+        </tr>
+        <tr>
+          <td class="label">Ngày cưới:</td>
+          <td class="value">${weddingDate}</td>
+        </tr>
+        <tr>
+          <td class="label">Kích thước in:</td>
+          <td class="value">${size}</td>
+        </tr>
+        <tr>
+          <td class="label">Chất liệu ép gỗ:</td>
+          <td class="value highlight">${material}</td>
+        </tr>
+      </table>
+
+      <div class="section-title">THÔNG TIN KHÁCH HÀNG & GIAO HÀNG</div>
+      <table class="table">
+        <tr>
+          <td class="label">Họ tên khách:</td>
+          <td class="value">${name}</td>
+        </tr>
+        <tr>
+          <td class="label">Số điện thoại / Zalo:</td>
+          <td class="value"><a href="tel:${phone}" style="color:#0284c7; text-decoration:none; font-size:16px;">${phone}</a></td>
+        </tr>
+        <tr>
+          <td class="label">Email khách:</td>
+          <td class="value">${email}</td>
+        </tr>
+        <tr>
+          <td class="label">Địa chỉ giao:</td>
+          <td class="value">${address}</td>
+        </tr>
+        <tr>
+          <td class="label">Ghi chú:</td>
+          <td class="value">${notes}</td>
+        </tr>
+        <tr>
+          <td class="label">Thời gian đặt:</td>
+          <td class="value" style="font-size:12px; color:#78716c;">${timeString}</td>
+        </tr>
+      </table>
+
+      <div class="btn-container">
+        <a href="https://zalo.me/${phone.replace(/[^0-9]/g, '')}" class="btn-zalo" target="_blank">
+          💬 Bấm Để Mở Chat Zalo Với Khách Hàng
+        </a>
+      </div>
+    </div>
+    <div class="footer">
+      Email thông báo đơn hàng tự động từ Photobook Vietnam (Gửi tới: <b>${TARGET_EMAILS.join(', ')}</b>).<br>
+      File ảnh thiết kế tối ưu JPG/WEBP đã được đính kèm và lưu trữ sẵn sàng để in.
+    </div>
+  </div>
+</body>
+</html>
+  `.trim();
+
+  const text = `
+ĐƠN ĐẶT IN ẢNH CỔNG CƯỚI - PHOTOBOOK VIETNAM
+==============================================
+- Dâu Rể: ${groom} & ${bride}
+- Ngày cưới: ${weddingDate}
+- Kích thước: ${size}
+- Chất liệu ép gỗ: ${material}
+${hasImageAttachment ? `- File thiết kế: Đính kèm trong email (${fileName})` : ''}
+${downloadUrl ? `- Link tải trực tiếp file gốc: ${downloadUrl}` : ''}
+
+THÔNG TIN KHÁCH HÀNG
+- Khách hàng: ${name}
+- SĐT / Zalo: ${phone}
+- Email: ${email}
+- Địa chỉ giao hàng: ${address}
+- Ghi chú: ${notes}
+- Thời gian: ${timeString}
+==============================================
+Chat Zalo: https://zalo.me/${phone.replace(/[^0-9]/g, '')}
+`.trim();
+
+  return { subject, html, text };
+}
+
+// Send Real Order Email via Gmail SMTP with Attachment and Download Link
+async function sendOrderEmail(
+  order: OrderPayload,
+  baseUrl?: string
+): Promise<{
+  success: boolean;
+  targetEmail: string;
+  fileName?: string;
+  downloadUrl?: string;
+  error?: string;
+}> {
+  let imageBuffer: Buffer | null = null;
+  const groomSlug = (order.groomName || 'Groom').replace(/\s+/g, '_');
+  const brideSlug = (order.brideName || 'Bride').replace(/\s+/g, '_');
+  
+  // Determine file extension (jpg / webp / png)
+  let ext = 'jpg';
+  if (order.designImageData) {
+    if (order.designImageData.includes('image/webp')) ext = 'webp';
+    else if (order.designImageData.includes('image/jpeg') || order.designImageData.includes('image/jpg')) ext = 'jpg';
+    else if (order.designImageData.includes('image/png')) ext = 'png';
+  }
+
+  let fileName = `Anh_Cong_${groomSlug}_${brideSlug}_${Date.now()}.${ext}`;
+  let downloadUrl: string | undefined;
+
+  // Process design base64 image if present
+  if (order.designImageData && order.designImageData.startsWith('data:image')) {
+    try {
+      const base64Data = order.designImageData.replace(/^data:image\/\w+;base64,/, '');
+      imageBuffer = Buffer.from(base64Data, 'base64');
+
+      // Save to server uploads folder
+      const filePath = path.join(UPLOADS_DIR, fileName);
+      fs.writeFileSync(filePath, imageBuffer);
+      console.log(`[Uploads] Saved design image to disk: ${filePath} (${(imageBuffer.length / 1024).toFixed(1)} KB)`);
+
+      if (baseUrl) {
+        downloadUrl = `${baseUrl}/uploads/${fileName}`;
+      }
+    } catch (saveErr) {
+      console.error('[Uploads Error] Could not save design image:', saveErr);
+    }
+  }
+
+  const hasAttachment = Boolean(imageBuffer);
+  const { subject, html, text } = generateOrderEmailHtml(order, hasAttachment, fileName, downloadUrl);
+  const targetEmailStr = TARGET_EMAILS.join(', ');
+
+  try {
+    const transporter = nodemailer.createTransport({
+      host: SMTP_CONFIG.host,
+      port: SMTP_CONFIG.port,
+      secure: SMTP_CONFIG.secure,
+      auth: {
+        user: SMTP_CONFIG.user,
+        pass: SMTP_CONFIG.pass,
+      },
     });
+
+    const mailOptions: any = {
+      from: `"Photobook Vietnam" <${SMTP_CONFIG.user}>`,
+      to: TARGET_EMAILS,
+      replyTo: order.customerEmail || undefined,
+      subject: subject,
+      text: text,
+      html: html,
+    };
+
+    // Attach image to the email and embed it
+    if (imageBuffer) {
+      mailOptions.attachments = [
+        {
+          filename: fileName,
+          content: imageBuffer,
+          cid: 'designImagePreview', // used in <img src="cid:designImagePreview">
+        },
+      ];
+    }
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log('[SMTP Gmail Success] Order email sent with optimized image file! MessageId:', info.messageId);
+    return {
+      success: true,
+      targetEmail: targetEmailStr,
+      fileName: hasAttachment ? fileName : undefined,
+      downloadUrl,
+    };
+  } catch (err: any) {
+    console.error('[SMTP Gmail Error]', err);
+    return { success: false, targetEmail: targetEmailStr, error: err.message };
+  }
 }
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  // Increase limit to handle portrait image uploads
-  app.use(express.json({ limit: "15mb" }));
-  app.use(express.urlencoded({ extended: true, limit: "15mb" }));
+  // Support large Base64 image payload (up to 100MB for 300DPI 7087x10630 canvas)
+  app.use(express.json({ limit: '100mb' }));
+  app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
-  const ai = new GoogleGenAI({
-    apiKey: process.env.GEMINI_API_KEY,
-    httpOptions: {
-      headers: {
-        'User-Agent': 'aistudio-build',
-      }
+  // Static directory for uploaded master print files
+  app.use('/uploads', express.static(UPLOADS_DIR));
+
+  // Direct download route for print shop
+  app.get('/download/:filename', (req, res) => {
+    const filename = req.params.filename;
+    const filePath = path.join(UPLOADS_DIR, filename);
+    if (fs.existsSync(filePath)) {
+      res.download(filePath);
+    } else {
+      res.status(404).send('File không tồn tại hoặc đã hết hạn lưu trữ.');
     }
   });
 
-  // Robust helper to call Gemini with retries (exponential backoff) and model fallback
-  const callGeminiWithRetry = async (
-    options: {
-      model: string;
-      contents: any;
-      config?: any;
-      retries?: number;
-      fallbackModels?: string[];
-    }
-  ): Promise<any> => {
-    const { model, contents, config, retries = 3, fallbackModels = ['gemini-3.1-flash-lite', 'gemini-flash-latest'] } = options;
-    let attempt = 0;
-    let currentModel = model;
-    
-    while (true) {
-      try {
-        console.log(`[Gemini Request] Model: ${currentModel}, Attempt: ${attempt + 1}/${retries}`);
-        const response = await ai.models.generateContent({
-          model: currentModel,
-          contents,
-          config,
-        });
-        return response;
-      } catch (error: any) {
-        attempt++;
-        const errorMessage = error?.message || String(error);
-        console.error(`[Gemini Error] Model: ${currentModel}, Attempt: ${attempt}/${retries} failed with:`, errorMessage);
-        
-        if (attempt < retries) {
-          const delay = Math.pow(2, attempt) * 1000;
-          console.log(`[Gemini Retry] Backing off for ${delay}ms before next attempt...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-          continue;
-        }
-        
-        if (fallbackModels && fallbackModels.length > 0) {
-          const nextModel = fallbackModels[0];
-          console.log(`[Gemini Fallback] Switching from ${currentModel} to fallback: ${nextModel}`);
-          return callGeminiWithRetry({
-            model: nextModel,
-            contents,
-            config,
-            retries: 2,
-            fallbackModels: fallbackModels.slice(1),
-          });
-        }
-        
-        throw error;
-      }
-    }
-  };
-
-  // Health check endpoint
-  app.get("/api/health", (req, res) => {
-    res.json({ status: "ok" });
+  // API Health Check
+  app.get('/api/health', (req, res) => {
+    res.json({
+      status: 'ok',
+      smtpUser: SMTP_CONFIG.user,
+      targetEmails: TARGET_EMAILS,
+      uploadsDir: UPLOADS_DIR,
+    });
   });
 
-  // Secure admin passcode check (Hidden entirely from browser source code)
-  app.post("/api/admin/verify-passcode", (req, res) => {
-    try {
-      const { passcode } = req.body;
-      if (!passcode) {
-        return res.status(400).json({ error: "Yêu cầu mật lệnh rành mạch." });
-      }
+  // API: Submit order & send actual email via Gmail SMTP
+  app.post('/api/order/submit', async (req, res) => {
+    const orderData: OrderPayload = req.body;
+    console.log('=== [NHẬN ĐƠN ĐẶT IN MỚI 300 DPI] === Dâu rể:', orderData.groomName, orderData.brideName, 'SĐT:', orderData.customerPhone);
 
-      const cleanCode = String(passcode).trim();
-      const envPass = process.env.ADMIN_PASSCODE ? String(process.env.ADMIN_PASSCODE).trim() : null;
-      
-      // Fallback secure list + custom configured environment variables
-      const validCodes = ["huyit7979", "7979", "8888"];
-      if (envPass) {
-        validCodes.push(envPass);
-      }
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+    const host = req.headers['x-forwarded-host'] || req.get('host');
+    const baseUrl = `${protocol}://${host}`;
 
-      if (validCodes.includes(cleanCode)) {
-        return res.json({ 
-          verified: true, 
-          // Hồi đáp một mật mã bùa chứng thực tạm thời để client lưu an toàn
-          sessionToken: crypto.createHash('sha256').update(cleanCode + "thaybay_salt_79").digest('hex') 
-        });
-      }
+    const emailResult = await sendOrderEmail(orderData, baseUrl);
 
-      return res.status(401).json({ error: "Thiên thư mật hiệu chưa đúng, xin mời nhập lại." });
-    } catch (err) {
-      console.error("Lỗi xác minh mã quản trị:", err);
-      return res.status(500).json({ error: "Máy chủ bận luận thiên cơ, hãy thử lại." });
-    }
+    res.json({
+      success: true,
+      emailSent: emailResult.success,
+      targetEmail: emailResult.targetEmail,
+      fileName: emailResult.fileName,
+      downloadUrl: emailResult.downloadUrl,
+      error: emailResult.error,
+      message: emailResult.success
+        ? `Đã gửi email thông báo đơn hàng kèm file ảnh thiết kế 300 DPI thành công đến: ${emailResult.targetEmail}`
+        : 'Đã lưu đơn hàng vào hệ thống.',
+      order: {
+        groomName: orderData.groomName,
+        brideName: orderData.brideName,
+        customerPhone: orderData.customerPhone,
+      },
+    });
   });
 
-  // Main divination analysis endpoint
-  app.post("/api/analyze-chart", async (req, res) => {
-    try {
-      const { gender, day, month, year, calendar, hour, minute, portraitImage } = req.body;
-
-      if (!day || !month || !year || !hour || !minute) {
-        return res.status(400).json({ error: "Thiếu thông tin ngày giờ sinh rành mạch." });
-      }
-
-      const yearNum = parseInt(year, 10);
-      const ZODIAC_ANIMALS = [
-        { 
-          vi: 'Bản mệnh: Thân (Khỉ)', 
-          en: 'Monkey', 
-          fallbackImage: 'https://images.unsplash.com/photo-1540573133-7587b7f16bf5?auto=format&fit=crop&q=80&w=600' 
-        },
-        { 
-          vi: 'Bản mệnh: Dậu (Gà)', 
-          en: 'Rooster', 
-          fallbackImage: 'https://images.unsplash.com/photo-1548142813-c348350df52b?auto=format&fit=crop&q=80&w=600' 
-        },
-        { 
-          vi: 'Bản mệnh: Tuất (Chó)', 
-          en: 'Dog', 
-          fallbackImage: 'https://images.unsplash.com/photo-1534361960057-19889db9621e?auto=format&fit=crop&q=80&w=600' 
-        },
-        { 
-          vi: 'Bản mệnh: Hợi (Lợn)', 
-          en: 'Pig', 
-          fallbackImage: 'https://images.unsplash.com/photo-1604848698030-c434ba0861db?auto=format&fit=crop&q=80&w=600' 
-        },
-        { 
-          vi: 'Bản mệnh: Tý (Chuột)', 
-          en: 'Rat', 
-          fallbackImage: 'https://images.unsplash.com/photo-1542385151-efd9000785a0?auto=format&fit=crop&q=80&w=600' 
-        },
-        { 
-          vi: 'Bản mệnh: Sửu (Trâu)', 
-          en: 'Water Buffalo', 
-          fallbackImage: 'https://images.unsplash.com/photo-1551884833-253d7f240508?auto=format&fit=crop&q=80&w=600' 
-        },
-        { 
-          vi: 'Bản mệnh: Dần (Hổ)', 
-          en: 'Tiger', 
-          fallbackImage: 'https://images.unsplash.com/photo-1508215886085-26388f586a1e?auto=format&fit=crop&q=80&w=600' 
-        },
-        { 
-          vi: 'Bản mệnh: Mão (Mèo)', 
-          en: 'Cat', 
-          fallbackImage: 'https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?auto=format&fit=crop&q=80&w=600' 
-        },
-        { 
-          vi: 'Bản mệnh: Thìn (Rồng)', 
-          en: 'Dragon', 
-          fallbackImage: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=600' 
-        },
-        { 
-          vi: 'Bản mệnh: Tỵ (Rắn)', 
-          en: 'Snake', 
-          fallbackImage: 'https://images.unsplash.com/photo-1531386151447-fd762e7a3ae4?auto=format&fit=crop&q=80&w=600' 
-        },
-        { 
-          vi: 'Bản mệnh: Ngọ (Ngựa)', 
-          en: 'Horse', 
-          fallbackImage: 'https://images.unsplash.com/photo-1488034976201-ffbaa99cbf5c?auto=format&fit=crop&q=80&w=600' 
-        },
-        { 
-          vi: 'Bản mệnh: Mùi (Dê)', 
-          en: 'Goat', 
-          fallbackImage: 'https://images.unsplash.com/photo-1524024973431-2ad916746881?auto=format&fit=crop&q=80&w=600' 
-        },
-      ];
-      const zodiac = ZODIAC_ANIMALS[yearNum % 12];
-
-      const SYSTEM_INSTRUCTION = `
-Bạn là một ông thầy tử vi và tướng số cao tuổi, có trình độ uyên thâm, với hơn nửa đời người chuyên luận đoán lá số vận mệnh con người. 
-Phong thái của bạn điềm đạm, từ tốn, lời lẽ sâu sắc, mang đậm chất cổ phong, huyền bí nhưng cũng rất chân thành và thấu tình đạt lý.
-Khi xưng hô, hãy dùng "lão phu" hoặc "thầy" và gọi người xem là "đương số" hoặc "con", "bạn".
-
-Nhiệm vụ của bạn là dựa vào thông tin ngày giờ sinh và giới tính được cung cấp, tự an sao lập số (trong suy nghĩ) và đưa ra những lời giải đoán đỉnh cao, chi tiết, sâu sắc nhất về 3 cung đầu tiên tựa như lời khai mở thiên cơ (Đây là phần luận giải cơ bản miễn phí của bạn):
-1. Bản mệnh: vóc dáng trưởng thành, tính cách, tư chất, tài năng, chỉ số IQ, học văn, khả năng giao tiếp, sức khoẻ.
-2. Cung phu thê: đời sống hôn nhân, vợ/chồng là người thế nào, ảnh hưởng ra sao, gia thế, tình cảm, hạnh phúc hay khổ đau, mức độ đào hoa, điểm cần lưu ý.
-3. Tài sản và nghề nghiệp (Tài Bạch): Đánh giá tài chính, độ giàu có, ngành nghề phù hợp, cách kiếm tiền hoặc kinh doanh.
-
-Nếu đương số có cung cấp ảnh chân dung, hãy kết hợp phân tích ngũ quan (tướng mạo, ánh mắt, khuôn mặt...) để đưa ra những nhận định chính xác hơn về tính cách và vận mệnh, kết hợp nhuần nhuyễn giữa tử vi và nhân tướng học.
-
-Hãy trình bày rõ ràng, mạch lạc bằng Markdown. Mỗi cung là một Heading 2 (##). Bắt đầu bằng một lời chào, xác nhận lại thông tin ngày giờ sinh (quy đổi âm dương nếu cần) và nhận xét tổng quan về lá số (và tướng mạo nếu có ảnh). Hãy lý giải thật hay, lôi cuốn, súc tích 3 cung này. Kết thúc bằng một lời hẹn: "Đương số có thể dâng lễ tùy hỷ để lão phu luận giải tinh tế và khai mở tiếp 9 cung mệnh thâm sâu còn lại kèm lời khuyên cát cát lành lành trọn đời."
-`;
-
-      const promptText = `
-Thông tin đương số:
-- Giới tính: ${gender}
-- Ngày sinh: ${day}/${month}/${year} (${calendar})
-- Giờ sinh: ${hour} giờ ${minute} phút
-${portraitImage ? '\nĐương số có gửi kèm chân dung để thầy xem tướng mạo ngũ quan.' : ''}
-
-Xin thầy hãy lập lá số tử vi dựa trên thông tin này và luận giải chi tiết 3 cung đầu tiên (Bản mệnh, Phu thê, Tài Bạch) theo yêu cầu một cách chân thực và sâu sắc.
-      `.trim();
-
-      const parts: any[] = [{ text: promptText }];
-      
-      if (portraitImage) {
-        // Safe check for base64
-        if (portraitImage.includes(';base64,')) {
-          const partsSplit = portraitImage.split(';base64,');
-          const mimePart = partsSplit[0].split(':');
-          const mimeType = mimePart.length > 1 ? mimePart[1] : 'image/jpeg';
-          const base64Data = partsSplit[1];
-          parts.unshift({
-            inlineData: {
-              data: base64Data,
-              mimeType: mimeType
-            }
-          });
-        }
-      }
-
-      // Use our retry & fallback helper to get the text analysis
-      let resultText = "";
-      try {
-        const textResponse = await callGeminiWithRetry({
-          model: 'gemini-3.5-flash',
-          contents: { parts },
-          config: {
-            systemInstruction: SYSTEM_INSTRUCTION,
-            temperature: 0.7,
-          },
-          retries: 3,
-          fallbackModels: ['gemini-3.1-flash-lite', 'gemini-flash-latest']
-        });
-        
-        if (textResponse && textResponse.text) {
-          resultText = textResponse.text;
-        } else {
-          throw new Error("Không nhận được phản hồi phù hợp từ trí tuệ nhân tạo");
-        }
-      } catch (textErr: any) {
-        console.error("Text horoscope generation failed:", textErr);
-        return res.status(500).json({ error: "Lão phu chưa thể thấu thị thiên cơ lúc này. Xin đương số hoan hỷ thử lại sau ít phút." });
-      }
-
-      // Predefined highly-polished mystical fallback illustration for this zodiac animal
-      const zodiacImage = zodiac.fallbackImage;
-
-      return res.json({
-        result: resultText,
-        zodiacName: zodiac.vi,
-        zodiacImage: zodiacImage
-      });
-
-    } catch (err: any) {
-      console.error("API error in analyze-chart:", err);
-      return res.status(500).json({ error: "Có sự cố ngoài ý muốn khi lão phu bấm độn. Xin hãy thử gieo quẻ lại." });
-    }
-  });
-
-  // Premium divination analysis endpoint
-  app.post("/api/analyze-premium-chart", async (req, res) => {
-    try {
-      const { gender, day, month, year, calendar, hour, minute, portraitImage, freeResult } = req.body;
-
-      if (!day || !month || !year || !hour || !minute) {
-        return res.status(400).json({ error: "Thiếu thông tin ngày giờ sinh rành mạch." });
-      }
-
-      const SYSTEM_INSTRUCTION_PREMIUM = `
-Bạn là một ông thầy tử vi và tướng số cao tuổi, có trình độ uyên thâm, với hơn nửa đời người chuyên luận đoán lá số vận mệnh con người. 
-Phong thái của bạn điềm đạm, từ tốn, lời lẽ sâu sắc, mang đậm chất cổ phong, huyền bí nhưng cũng rất chân thành và thấu tình đạt lý.
-Khi xưng hô, hãy dùng "lão phu" hoặc "thầy" và gọi người xem là "đương số" hoặc "con", "bạn".
-
-Nhiệm vụ của bạn là dựa vào thông tin ngày giờ sinh và giới tính được cung cấp, tiếp nối phần luận giải 3 cung đầu tiên trước đó (bản mệnh, phu thê, tài bạch), nay hãy khởi tạo và đưa ra luận giải chi tiết, sâu sắc nhất về 9 cung tiếp theo và lời khuyên tổng thể cho đương số (đây là phần cao cấp đã được dâng lễ):
-4. Phụ mẫu: Cha mẹ ra sao, học vấn, kinh tế, cách cư xử với mọi người.
-5. Cung thiên di: biểu hiện khi ra ngoài, xã hội đánh giá thế nào, khả năng giao tiếp, độ thích nghi, các tài năng chính, thử thách thường gặp, mức độ đào hoa.
-6. Cung tật ách: bệnh tật dễ mắc, tai ương, lưu ý về sức khoẻ.
-7. Cung nô bộc: bạn bè, quan hệ xã hội, hợp làm ăn không, nên kết giao với ai, quan hệ với cấp trên, kiểu sếp phù hợp.
-8. Cung quan lộc: con đường công danh sự nghiệp có thuận lợi hay trắc trở? người này có xu hướng làm chủ hay làm thuê? Có phù hợp với chính trị, chức quyền hay công việc ổn định không? Nếu kinh doanh, nên làm riêng hay hợp tác? những giai đoạn thuận lợi trong sự nghiệp?
-9. Cung điền trạch: Khả năng sở hữu nhà đất thế nào? tài vận bất động sản tốt hay xấu? nên đầu tư vào đất đai, nhà cửa không? người này có xu hướng thích sống ổn định hay di chuyển nhiều?
-10. Cung tử tức: Có dễ sinh con không? Có hiếm muộn không? dự báo số lượng con cái, con trai hay con gái nhiều hơn? Con cái có giỏi giang, hiếu thảo không? mối quan hệ giữa người này với con cái thế nào? những vấn đề đặc biệt có không?
-11. Cung huynh đệ: nhà mấy anh chị em? có được nhờ cậy anh chị em không hay ngược lại? khả năng kết hợp làm ăn kinh doanh với anh chị em ruột được không?
-12. Cung phúc đức: trong họ thường có bà cô tổ, ông tổ cậu nào chết trẻ linh thiêng hay phù hộ không? gia tiên có linh thiêng không? phúc phần của gia tộc ảnh hưởng đến người này ra sao?
-
-Hãy trình bày rõ ràng, mạch lạc bằng Markdown. Mỗi cung là một Heading 2 (##). 
-Mở đầu bằng một câu chúc mừng đương số đã hoàn thành dâng lễ tùy hỷ để khai mở huyền cơ và gieo kết duyên lành. Sau đó luận đoán mạch lạc 9 cung. Kết thúc luận giải bằng lời khuyên tổng quan cực kỳ thâm sâu cho cả vận trình cuộc đời của đương số, dặn dò hành thiện tích đức.
-`;
-
-      const promptText = `
-Thông tin đương số:
-- Giới tính: ${gender}
-- Ngày sinh: ${day}/${month}/${year} (${calendar})
-- Giờ sinh: ${hour} giờ ${minute} phút
-${portraitImage ? '\nĐương số có gửi kèm chân dung để thầy xem tướng mạo ngũ quan.' : ''}
-
-${freeResult ? `Phần luận đoán 3 cung (Bản mệnh, Phu thê, Tài Bạch) miễn phí thầy đã ban cho đương số trước đó là:\n${freeResult}\n` : ''}
-
-Xin thầy dựa trên thông tin trên và kế thừa mạch luận giải trước đó (đừng lặp lại 3 cung đã viết), tiếp tục bấm độn sâu sắc và viết phần luận giải cao cấp cho 9 cung còn lại (Phụ mẫu, Thiên di, Tật ách, Nô bộc, Quan lộc, Điền trạch, Tử tức, Huynh đệ, Phúc đức) kèm lời khuyên trọn đời ý nghĩa.
-      `.trim();
-
-      const parts: any[] = [{ text: promptText }];
-      
-      if (portraitImage) {
-        if (portraitImage.includes(';base64,')) {
-          const partsSplit = portraitImage.split(';base64,');
-          const mimePart = partsSplit[0].split(':');
-          const mimeType = mimePart.length > 1 ? mimePart[1] : 'image/jpeg';
-          const base64Data = partsSplit[1];
-          parts.unshift({
-            inlineData: {
-              data: base64Data,
-              mimeType: mimeType
-            }
-          });
-        }
-      }
-
-      let resultText = "";
-      try {
-        const textResponse = await callGeminiWithRetry({
-          model: 'gemini-3.5-flash',
-          contents: { parts },
-          config: {
-            systemInstruction: SYSTEM_INSTRUCTION_PREMIUM,
-            temperature: 0.7,
-          },
-          retries: 3,
-          fallbackModels: ['gemini-3.1-flash-lite', 'gemini-flash-latest']
-        });
-        
-        if (textResponse && textResponse.text) {
-          resultText = textResponse.text;
-        } else {
-          throw new Error("Không nhận được phản hồi cao cấp từ trí tuệ nhân tạo");
-        }
-      } catch (textErr: any) {
-        console.error("Premium horoscope generation failed:", textErr);
-        return res.status(500).json({ error: "Mạng lưới vũ trụ chưa ổn định, lão phu chưa thể mở tiếp 9 cung mệnh. Đương số hãy thử lại sau ít phút hoặc nhấn Tải lại." });
-      }
-
-      return res.json({
-        result: resultText
-      });
-
-    } catch (err: any) {
-      console.error("API error in analyze-premium-chart:", err);
-      return res.status(500).json({ error: "Có sự cố khi lão phu tiếp tục bấm độn 9 cung tiếp theo. Đương số vui lòng thử lại." });
-    }
-  });
-
-  // TTS Endpoint
-  app.post("/api/generate-audio", async (req, res) => {
-    try {
-      const { text } = req.body;
-      if (!text) {
-        return res.status(400).json({ error: "Không tìm thấy nội dung luận giải." });
-      }
-
-      // Dọn dẹp ký tự Markdown thừa để giọng đọc tự nhiên, không bị vấp
-      const cleanText = text.replace(/[#*`_:-]/g, ' ').replace(/\s+/g, ' ').trim();
-      const truncatedText = cleanText.substring(0, 30000); // Tăng giới hạn để đọc hết 12 cung
-
-      // ========================================================
-      // CẤU HÌNH API VIVIBE / LUCYLAB 
-      // ========================================================
-      const API_KEY = process.env.VIVIBE_API_KEY || 'sk_live_IO2D0o6QJ4bBs4ecuy0piDkB4kpl6D6A';
-      const VOICE_ID = '8u97ewbLyV5dwePspwJY1w';
-      const ENDPOINT = 'https://api.lucylab.io/json-rpc';
-
-      // Hàm chia nhỏ văn bản theo gạch đầu dòng dùng cho trường hợp dự phòng Google TTS
-      const splitTextIntoChunks = (txt: string, maxLength: number = 180): string[] => {
-        const sentences = txt.split(/([.,!?;:\n]+)/);
-        const chunks: string[] = [];
-        let currentChunk = '';
-        for (let i = 0; i < sentences.length; i++) {
-          let part = sentences[i];
-          if (!part) continue;
-          if (i + 1 < sentences.length && sentences[i + 1].match(/^[.,!?;:\n]+$/)) { 
-            part += sentences[i + 1]; 
-            i++; 
-          }
-
-          if (currentChunk.length + part.length + 1 > maxLength) {
-            if (currentChunk.trim()) chunks.push(currentChunk.trim());
-            currentChunk = part;
-          } else {
-            currentChunk += (currentChunk ? ' ' : '') + part;
-          }
-        }
-        if (currentChunk.trim()) chunks.push(currentChunk.trim());
-        return chunks;
-      };
-
-      try {
-        console.log(`[Vivibe API] Gửi yêu cầu sinh giọng đọc (độ dài: ${truncatedText.length} ký tự)...`);
-        
-        // Bước 1: Khởi tạo TTS Job bằng ttsLongText để hỗ trợ văn bản dài mượt mà
-        const response = await fetch(ENDPOINT, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${API_KEY}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            method: 'ttsLongText',
-            input: {
-              text: truncatedText,
-              userVoiceId: VOICE_ID,
-              speed: 1.0
-            }
-          })
-        });
-
-        if (!response.ok) {
-          const errText = await response.text();
-          throw new Error(`Khởi tạo job thất bại: mã lỗi ${response.status}, chi tiết: ${errText}`);
-        }
-
-        const data = await response.json();
-        if (data.error) {
-          throw new Error(`ViVibe trả về lỗi: ${JSON.stringify(data.error)}`);
-        }
-
-        const exportId = data.result?.projectExportId;
-        if (!exportId) {
-          throw new Error(`Không nhận được projectExportId: ${JSON.stringify(data)}`);
-        }
-
-        console.log(`[Vivibe API] Đã tạo thành công TTS Job với ID: ${exportId}. Bắt đầu thăm dò tiến độ...`);
-
-        // Bước 2: Thăm dò (Polling) để lấy link tải file audio đã xử lý xong
-        let audioUrl = '';
-        const maxAttempts = 25; // Chờ tối đa 50 giây (25 lần * 2000ms)
-        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-          console.log(`[Vivibe API] Thăm dò lần ${attempt}...`);
-          
-          const statusRes = await fetch(ENDPOINT, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${API_KEY}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              method: 'getExportStatus',
-              input: { projectExportId: exportId }
-            })
-          });
-
-          if (!statusRes.ok) {
-            console.warn(`[Vivibe API] Thăm dò thất bại, thử lại trong giây lát. Mã lỗi: ${statusRes.status}`);
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            continue;
-          }
-
-          const statusData = await statusRes.json();
-          if (statusData.error) {
-            throw new Error(`Lỗi cập nhật tiến độ: ${JSON.stringify(statusData.error)}`);
-          }
-
-          const state = statusData.result?.state;
-          console.log(`[Vivibe API] Trạng thái Job hiện tại: ${state}`);
-
-          if (state === 'completed') {
-            audioUrl = statusData.result?.url;
-            break;
-          } else if (state === 'failed') {
-            throw new Error(`Job sinh giọng nói bị thất bại ở phía máy chủ ViVibe.`);
-          }
-
-          // Chờ 2 giây trước lần thăm dò tiếp theo
-          await new Promise(resolve => setTimeout(resolve, 2000));
-        }
-
-        if (!audioUrl) {
-          throw new Error('Thời gian chờ xử lý giọng nói quá lâu (Timeout 50s)');
-        }
-
-        console.log(`[Vivibe API] Tạo giọng đọc thành công! Khởi sự tải file và truyền phát...`);
-
-        // Bước 3: Tải file nhị phân và gửi trực tiếp về cho trình duyệt
-        const audioFetch = await fetch(audioUrl);
-        if (!audioFetch.ok) {
-          throw new Error(`Không thể tải xuống file âm thanh: mã lỗi ${audioFetch.status}`);
-        }
-
-        const arrayBuffer = await audioFetch.arrayBuffer();
-        const finalBuffer = Buffer.from(arrayBuffer);
-
-        res.setHeader('Content-Type', 'audio/mpeg');
-        return res.status(200).send(finalBuffer);
-
-      } catch (vivibeErr: any) {
-        console.warn('[Vivibe TTS Failed, kích hoạt giọng đọc chị Google dự phòng]', vivibeErr.message);
-        
-        // Dự phòng giọng đọc chị Google nếu Vivibe lỗi hoặc quá tải
-        const fallbackBuffers: Buffer[] = [];
-        const fallbackText = truncatedText; // Bỏ giới hạn, đọc toàn bộ
-        const googleChunks = splitTextIntoChunks(fallbackText, 180);
-        
-        for (let i = 0; i < googleChunks.length; i += 6) {
-          const batch = googleChunks.slice(i, i + 6);
-          const batchPromises = batch.map(async (chunk) => {
-            const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(chunk)}&tl=vi&client=tw-ob`;
-            const response = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-            return Buffer.from(await response.arrayBuffer());
-          });
-          fallbackBuffers.push(...(await Promise.all(batchPromises)));
-        }
-        
-        const finalFallbackBuffer = Buffer.concat(fallbackBuffers);
-        res.setHeader('Content-Type', 'audio/mpeg');
-        return res.status(200).send(finalFallbackBuffer);
-      }
-    } catch (err: any) {
-      console.error("Audio generation completely failed:", err);
-      return res.status(500).json({ error: "Lời vàng ý ngọc chưa thể ngân vang. Mong đương số tự xem quẻ bằng mắt." });
-    }
-  });
-
-  // Serve static files / Vite middleware
-  if (process.env.NODE_ENV !== "production") {
+  // Vite middleware for development
+  if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
-      appType: "spa",
+      appType: 'spa',
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), "dist");
+    const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server is running on port ${PORT}`);
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on http://localhost:${PORT}`);
   });
 }
 

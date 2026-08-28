@@ -1,3 +1,4 @@
+"use strict";
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -24,443 +25,291 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 // server.ts
 var import_express = __toESM(require("express"), 1);
 var import_path = __toESM(require("path"), 1);
+var import_fs = __toESM(require("fs"), 1);
 var import_vite = require("vite");
-var import_genai = require("@google/genai");
-var import_crypto = __toESM(require("crypto"), 1);
-var import_ws = __toESM(require("ws"), 1);
-var import_dotenv = __toESM(require("dotenv"), 1);
-import_dotenv.default.config();
+var import_nodemailer = __toESM(require("nodemailer"), 1);
+var UPLOADS_DIR = import_path.default.join(process.cwd(), "uploads");
+if (!import_fs.default.existsSync(UPLOADS_DIR)) {
+  import_fs.default.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
+var SMTP_CONFIG = {
+  host: process.env.SMTP_HOST || "smtp.gmail.com",
+  port: parseInt(process.env.SMTP_PORT || "465", 10),
+  secure: true,
+  user: process.env.SMTP_USER || "photobookvietnam.net@gmail.com",
+  pass: process.env.SMTP_PASS || "pmgy mera pmts gfgp"
+};
+var TARGET_EMAILS = [
+  process.env.ADMIN_EMAIL || "huyitcom@gmail.com",
+  "photobookvietnam.net@gmail.com"
+];
+function generateOrderEmailHtml(order, hasImageAttachment, fileName, downloadUrl) {
+  const groom = order.groomName || "Ch\xFA r\u1EC3";
+  const bride = order.brideName || "C\xF4 d\xE2u";
+  const weddingDate = order.weddingDate || "Ch\u01B0a r\xF5";
+  const size = order.size || "60 x 90 cm (Kh\u1ED5 \u0110\u1EE9ng Chu\u1EA9n)";
+  const material = order.materialName || "\u1EA2nh C\u1ED5ng \xC9p G\u1ED7";
+  const name = order.customerName || "Ch\u01B0a cung c\u1EA5p";
+  const phone = order.customerPhone || "Ch\u01B0a cung c\u1EA5p";
+  const email = order.customerEmail || "Kh\xF4ng c\xF3";
+  const address = order.customerAddress || "T\u01B0 v\u1EA5n giao h\xE0ng t\u1EADn n\u01A1i";
+  const notes = order.notes || "Kh\xF4ng c\xF3";
+  const now = /* @__PURE__ */ new Date();
+  const timeString = now.toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
+  const subject = `\u{1F514} [\u0110\u01A0N \u0110\u1EB6T IN \u1EA2NH C\u1ED4NG C\u01AF\u1EDAI] ${groom} & ${bride} - S\u0110T: ${phone}`;
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #1c1917; background-color: #f5f5f4; margin: 0; padding: 20px; }
+    .card { max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e7e5e4; box-shadow: 0 4px 14px rgba(0,0,0,0.06); }
+    .header { background: linear-gradient(135deg, #0284c7, #0ea5e9); padding: 24px 28px; color: #ffffff; }
+    .header h1 { margin: 0 0 6px 0; font-size: 20px; font-weight: 700; }
+    .header p { margin: 0; font-size: 13px; color: #e0f2fe; }
+    .body { padding: 24px 28px; }
+    .section-title { font-size: 13px; font-weight: 700; color: #0369a1; text-transform: uppercase; letter-spacing: 0.5px; margin: 20px 0 10px 0; border-bottom: 2px solid #e0f2fe; padding-bottom: 4px; }
+    .section-title:first-child { margin-top: 0; }
+    .table { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 14px; }
+    .table td { padding: 8px 0; border-bottom: 1px solid #f5f5f4; vertical-align: top; }
+    .table td.label { width: 150px; color: #78716c; font-weight: 500; }
+    .table td.value { color: #1c1917; font-weight: 600; }
+    .highlight { color: #0284c7; font-weight: 700; }
+    .image-preview-container { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; margin: 16px 0; text-align: center; }
+    .image-preview-container img { max-width: 100%; max-height: 440px; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border: 1px solid #cbd5e1; }
+    .btn-container { margin: 22px 0 10px 0; text-align: center; }
+    .btn-download { display: inline-block; background: #0284c7; color: #ffffff; text-decoration: none; padding: 13px 26px; border-radius: 10px; font-size: 14px; font-weight: 700; margin-bottom: 10px; box-shadow: 0 2px 5px rgba(2,132,199,0.3); }
+    .btn-zalo { display: inline-block; background: #0068ff; color: #ffffff; text-decoration: none; padding: 11px 22px; border-radius: 10px; font-size: 13px; font-weight: 600; }
+    .badge-optimized { display: inline-block; background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 6px; margin-top: 6px; }
+    .footer { background: #fafaf9; padding: 16px 28px; font-size: 12px; color: #a8a29e; text-align: center; border-top: 1px solid #f5f5f4; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <h1>\u{1F514} C\xD3 \u0110\u01A0N \u0110\u1EB6T IN \u1EA2NH C\u1ED4NG C\u01AF\u1EDAI M\u1EDAI</h1>
+      <p>Ghi nh\u1EADn t\u1EF1 \u0111\u1ED9ng t\u1EEB \u1EE9ng d\u1EE5ng Thi\u1EBFt K\u1EBF & \u0110\u1EB7t In \u1EA2nh C\u1ED5ng C\u01B0\u1EDBi Photobook Vietnam</p>
+    </div>
+    <div class="body">
+      ${hasImageAttachment ? `
+      <div class="section-title">\u{1F5BC} B\u1EA2N THI\u1EBET K\u1EBE \u0110\xCDNH K\xC8M (T\u1ED0I \u01AFU H\xD3A \u0110\u1EC2 IN \u1EA4N)</div>
+      <div class="image-preview-container">
+        <img src="cid:designImagePreview" alt="B\u1EA3n thi\u1EBFt k\u1EBF \u1EA3nh c\u1ED5ng c\u01B0\u1EDBi" />
+        <div style="margin-top: 10px;">
+          <span class="badge-optimized">\u2713 \u0110\xC3 T\u1ED0I \u01AFU N\xC9N NH\u1EB8 & S\u1EAEC N\xC9T (JPG/WEBP)</span>
+        </div>
+        <p style="margin: 10px 0 0 0; font-size: 12px; color: #64748b;">
+          \u{1F4CE} <b>File \u0111\xEDnh k\xE8m:</b> <code>${fileName || "Anh_Cong_Cuoi_ThietKe.jpg"}</code>
+        </p>
+        ${downloadUrl ? `
+        <div style="margin-top: 14px;">
+          <a href="${downloadUrl}" class="btn-download" target="_blank">
+            \u{1F4E5} B\u1EA4M \u0110\u1EC2 T\u1EA2I FILE G\u1ED0C \u0110\u1ED8 N\xC9T CAO
+          </a>
+        </div>
+        ` : ""}
+      </div>
+      ` : ""}
+
+      <div class="section-title">TH\xD4NG TIN S\u1EA2N PH\u1EA8M IN</div>
+      <table class="table">
+        <tr>
+          <td class="label">D\xE2u R\u1EC3:</td>
+          <td class="value highlight">${groom} & ${bride}</td>
+        </tr>
+        <tr>
+          <td class="label">Ng\xE0y c\u01B0\u1EDBi:</td>
+          <td class="value">${weddingDate}</td>
+        </tr>
+        <tr>
+          <td class="label">K\xEDch th\u01B0\u1EDBc in:</td>
+          <td class="value">${size}</td>
+        </tr>
+        <tr>
+          <td class="label">Ch\u1EA5t li\u1EC7u \xE9p g\u1ED7:</td>
+          <td class="value highlight">${material}</td>
+        </tr>
+      </table>
+
+      <div class="section-title">TH\xD4NG TIN KH\xC1CH H\xC0NG & GIAO H\xC0NG</div>
+      <table class="table">
+        <tr>
+          <td class="label">H\u1ECD t\xEAn kh\xE1ch:</td>
+          <td class="value">${name}</td>
+        </tr>
+        <tr>
+          <td class="label">S\u1ED1 \u0111i\u1EC7n tho\u1EA1i / Zalo:</td>
+          <td class="value"><a href="tel:${phone}" style="color:#0284c7; text-decoration:none; font-size:16px;">${phone}</a></td>
+        </tr>
+        <tr>
+          <td class="label">Email kh\xE1ch:</td>
+          <td class="value">${email}</td>
+        </tr>
+        <tr>
+          <td class="label">\u0110\u1ECBa ch\u1EC9 giao:</td>
+          <td class="value">${address}</td>
+        </tr>
+        <tr>
+          <td class="label">Ghi ch\xFA:</td>
+          <td class="value">${notes}</td>
+        </tr>
+        <tr>
+          <td class="label">Th\u1EDDi gian \u0111\u1EB7t:</td>
+          <td class="value" style="font-size:12px; color:#78716c;">${timeString}</td>
+        </tr>
+      </table>
+
+      <div class="btn-container">
+        <a href="https://zalo.me/${phone.replace(/[^0-9]/g, "")}" class="btn-zalo" target="_blank">
+          \u{1F4AC} B\u1EA5m \u0110\u1EC3 M\u1EDF Chat Zalo V\u1EDBi Kh\xE1ch H\xE0ng
+        </a>
+      </div>
+    </div>
+    <div class="footer">
+      Email th\xF4ng b\xE1o \u0111\u01A1n h\xE0ng t\u1EF1 \u0111\u1ED9ng t\u1EEB Photobook Vietnam (G\u1EEDi t\u1EDBi: <b>${TARGET_EMAILS.join(", ")}</b>).<br>
+      File \u1EA3nh thi\u1EBFt k\u1EBF t\u1ED1i \u01B0u JPG/WEBP \u0111\xE3 \u0111\u01B0\u1EE3c \u0111\xEDnh k\xE8m v\xE0 l\u01B0u tr\u1EEF s\u1EB5n s\xE0ng \u0111\u1EC3 in.
+    </div>
+  </div>
+</body>
+</html>
+  `.trim();
+  const text = `
+\u0110\u01A0N \u0110\u1EB6T IN \u1EA2NH C\u1ED4NG C\u01AF\u1EDAI - PHOTOBOOK VIETNAM
+==============================================
+- D\xE2u R\u1EC3: ${groom} & ${bride}
+- Ng\xE0y c\u01B0\u1EDBi: ${weddingDate}
+- K\xEDch th\u01B0\u1EDBc: ${size}
+- Ch\u1EA5t li\u1EC7u \xE9p g\u1ED7: ${material}
+${hasImageAttachment ? `- File thi\u1EBFt k\u1EBF: \u0110\xEDnh k\xE8m trong email (${fileName})` : ""}
+${downloadUrl ? `- Link t\u1EA3i tr\u1EF1c ti\u1EBFp file g\u1ED1c: ${downloadUrl}` : ""}
+
+TH\xD4NG TIN KH\xC1CH H\xC0NG
+- Kh\xE1ch h\xE0ng: ${name}
+- S\u0110T / Zalo: ${phone}
+- Email: ${email}
+- \u0110\u1ECBa ch\u1EC9 giao h\xE0ng: ${address}
+- Ghi ch\xFA: ${notes}
+- Th\u1EDDi gian: ${timeString}
+==============================================
+Chat Zalo: https://zalo.me/${phone.replace(/[^0-9]/g, "")}
+`.trim();
+  return { subject, html, text };
+}
+async function sendOrderEmail(order, baseUrl) {
+  let imageBuffer = null;
+  const groomSlug = (order.groomName || "Groom").replace(/\s+/g, "_");
+  const brideSlug = (order.brideName || "Bride").replace(/\s+/g, "_");
+  let ext = "jpg";
+  if (order.designImageData) {
+    if (order.designImageData.includes("image/webp")) ext = "webp";
+    else if (order.designImageData.includes("image/jpeg") || order.designImageData.includes("image/jpg")) ext = "jpg";
+    else if (order.designImageData.includes("image/png")) ext = "png";
+  }
+  let fileName = `Anh_Cong_${groomSlug}_${brideSlug}_${Date.now()}.${ext}`;
+  let downloadUrl;
+  if (order.designImageData && order.designImageData.startsWith("data:image")) {
+    try {
+      const base64Data = order.designImageData.replace(/^data:image\/\w+;base64,/, "");
+      imageBuffer = Buffer.from(base64Data, "base64");
+      const filePath = import_path.default.join(UPLOADS_DIR, fileName);
+      import_fs.default.writeFileSync(filePath, imageBuffer);
+      console.log(`[Uploads] Saved design image to disk: ${filePath} (${(imageBuffer.length / 1024).toFixed(1)} KB)`);
+      if (baseUrl) {
+        downloadUrl = `${baseUrl}/uploads/${fileName}`;
+      }
+    } catch (saveErr) {
+      console.error("[Uploads Error] Could not save design image:", saveErr);
+    }
+  }
+  const hasAttachment = Boolean(imageBuffer);
+  const { subject, html, text } = generateOrderEmailHtml(order, hasAttachment, fileName, downloadUrl);
+  const targetEmailStr = TARGET_EMAILS.join(", ");
+  try {
+    const transporter = import_nodemailer.default.createTransport({
+      host: SMTP_CONFIG.host,
+      port: SMTP_CONFIG.port,
+      secure: SMTP_CONFIG.secure,
+      auth: {
+        user: SMTP_CONFIG.user,
+        pass: SMTP_CONFIG.pass
+      }
+    });
+    const mailOptions = {
+      from: `"Photobook Vietnam" <${SMTP_CONFIG.user}>`,
+      to: TARGET_EMAILS,
+      replyTo: order.customerEmail || void 0,
+      subject,
+      text,
+      html
+    };
+    if (imageBuffer) {
+      mailOptions.attachments = [
+        {
+          filename: fileName,
+          content: imageBuffer,
+          cid: "designImagePreview"
+          // used in <img src="cid:designImagePreview">
+        }
+      ];
+    }
+    const info = await transporter.sendMail(mailOptions);
+    console.log("[SMTP Gmail Success] Order email sent with optimized image file! MessageId:", info.messageId);
+    return {
+      success: true,
+      targetEmail: targetEmailStr,
+      fileName: hasAttachment ? fileName : void 0,
+      downloadUrl
+    };
+  } catch (err) {
+    console.error("[SMTP Gmail Error]", err);
+    return { success: false, targetEmail: targetEmailStr, error: err.message };
+  }
+}
 async function startServer() {
   const app = (0, import_express.default)();
   const PORT = 3e3;
-  app.use(import_express.default.json({ limit: "15mb" }));
-  app.use(import_express.default.urlencoded({ extended: true, limit: "15mb" }));
-  const ai = new import_genai.GoogleGenAI({
-    apiKey: process.env.GEMINI_API_KEY,
-    httpOptions: {
-      headers: {
-        "User-Agent": "aistudio-build"
-      }
+  app.use(import_express.default.json({ limit: "100mb" }));
+  app.use(import_express.default.urlencoded({ limit: "100mb", extended: true }));
+  app.use("/uploads", import_express.default.static(UPLOADS_DIR));
+  app.get("/download/:filename", (req, res) => {
+    const filename = req.params.filename;
+    const filePath = import_path.default.join(UPLOADS_DIR, filename);
+    if (import_fs.default.existsSync(filePath)) {
+      res.download(filePath);
+    } else {
+      res.status(404).send("File kh\xF4ng t\u1ED3n t\u1EA1i ho\u1EB7c \u0111\xE3 h\u1EBFt h\u1EA1n l\u01B0u tr\u1EEF.");
     }
   });
-  const callGeminiWithRetry = async (options) => {
-    const { model, contents, config, retries = 3, fallbackModels = ["gemini-3.1-flash-lite", "gemini-flash-latest"] } = options;
-    let attempt = 0;
-    let currentModel = model;
-    while (true) {
-      try {
-        console.log(`[Gemini Request] Model: ${currentModel}, Attempt: ${attempt + 1}/${retries}`);
-        const response = await ai.models.generateContent({
-          model: currentModel,
-          contents,
-          config
-        });
-        return response;
-      } catch (error) {
-        attempt++;
-        const errorMessage = error?.message || String(error);
-        console.error(`[Gemini Error] Model: ${currentModel}, Attempt: ${attempt}/${retries} failed with:`, errorMessage);
-        if (attempt < retries) {
-          const delay = Math.pow(2, attempt) * 1e3;
-          console.log(`[Gemini Retry] Backing off for ${delay}ms before next attempt...`);
-          await new Promise((resolve) => setTimeout(resolve, delay));
-          continue;
-        }
-        if (fallbackModels && fallbackModels.length > 0) {
-          const nextModel = fallbackModels[0];
-          console.log(`[Gemini Fallback] Switching from ${currentModel} to fallback: ${nextModel}`);
-          return callGeminiWithRetry({
-            model: nextModel,
-            contents,
-            config,
-            retries: 2,
-            fallbackModels: fallbackModels.slice(1)
-          });
-        }
-        throw error;
-      }
-    }
-  };
   app.get("/api/health", (req, res) => {
-    res.json({ status: "ok" });
+    res.json({
+      status: "ok",
+      smtpUser: SMTP_CONFIG.user,
+      targetEmails: TARGET_EMAILS,
+      uploadsDir: UPLOADS_DIR
+    });
   });
-  app.post("/api/admin/verify-passcode", (req, res) => {
-    try {
-      const { passcode } = req.body;
-      if (!passcode) {
-        return res.status(400).json({ error: "Y\xEAu c\u1EA7u m\u1EADt l\u1EC7nh r\xE0nh m\u1EA1ch." });
+  app.post("/api/order/submit", async (req, res) => {
+    const orderData = req.body;
+    console.log("=== [NH\u1EACN \u0110\u01A0N \u0110\u1EB6T IN M\u1EDAI 300 DPI] === D\xE2u r\u1EC3:", orderData.groomName, orderData.brideName, "S\u0110T:", orderData.customerPhone);
+    const protocol = req.headers["x-forwarded-proto"] || req.protocol;
+    const host = req.headers["x-forwarded-host"] || req.get("host");
+    const baseUrl = `${protocol}://${host}`;
+    const emailResult = await sendOrderEmail(orderData, baseUrl);
+    res.json({
+      success: true,
+      emailSent: emailResult.success,
+      targetEmail: emailResult.targetEmail,
+      fileName: emailResult.fileName,
+      downloadUrl: emailResult.downloadUrl,
+      error: emailResult.error,
+      message: emailResult.success ? `\u0110\xE3 g\u1EEDi email th\xF4ng b\xE1o \u0111\u01A1n h\xE0ng k\xE8m file \u1EA3nh thi\u1EBFt k\u1EBF 300 DPI th\xE0nh c\xF4ng \u0111\u1EBFn: ${emailResult.targetEmail}` : "\u0110\xE3 l\u01B0u \u0111\u01A1n h\xE0ng v\xE0o h\u1EC7 th\u1ED1ng.",
+      order: {
+        groomName: orderData.groomName,
+        brideName: orderData.brideName,
+        customerPhone: orderData.customerPhone
       }
-      const cleanCode = String(passcode).trim();
-      const envPass = process.env.ADMIN_PASSCODE ? String(process.env.ADMIN_PASSCODE).trim() : null;
-      const validCodes = ["huyit7979", "7979", "8888"];
-      if (envPass) {
-        validCodes.push(envPass);
-      }
-      if (validCodes.includes(cleanCode)) {
-        return res.json({
-          verified: true,
-          // Hồi đáp một mật mã bùa chứng thực tạm thời để client lưu an toàn
-          sessionToken: import_crypto.default.createHash("sha256").update(cleanCode + "thaybay_salt_79").digest("hex")
-        });
-      }
-      return res.status(401).json({ error: "Thi\xEAn th\u01B0 m\u1EADt hi\u1EC7u ch\u01B0a \u0111\xFAng, xin m\u1EDDi nh\u1EADp l\u1EA1i." });
-    } catch (err) {
-      console.error("L\u1ED7i x\xE1c minh m\xE3 qu\u1EA3n tr\u1ECB:", err);
-      return res.status(500).json({ error: "M\xE1y ch\u1EE7 b\u1EADn lu\u1EADn thi\xEAn c\u01A1, h\xE3y th\u1EED l\u1EA1i." });
-    }
-  });
-  app.post("/api/analyze-chart", async (req, res) => {
-    try {
-      const { gender, day, month, year, calendar, hour, minute, portraitImage } = req.body;
-      if (!day || !month || !year || !hour || !minute) {
-        return res.status(400).json({ error: "Thi\u1EBFu th\xF4ng tin ng\xE0y gi\u1EDD sinh r\xE0nh m\u1EA1ch." });
-      }
-      const yearNum = parseInt(year, 10);
-      const ZODIAC_ANIMALS = [
-        {
-          vi: "B\u1EA3n m\u1EC7nh: Th\xE2n (Kh\u1EC9)",
-          en: "Monkey",
-          fallbackImage: "https://images.unsplash.com/photo-1540573133-7587b7f16bf5?auto=format&fit=crop&q=80&w=600"
-        },
-        {
-          vi: "B\u1EA3n m\u1EC7nh: D\u1EADu (G\xE0)",
-          en: "Rooster",
-          fallbackImage: "https://images.unsplash.com/photo-1548142813-c348350df52b?auto=format&fit=crop&q=80&w=600"
-        },
-        {
-          vi: "B\u1EA3n m\u1EC7nh: Tu\u1EA5t (Ch\xF3)",
-          en: "Dog",
-          fallbackImage: "https://images.unsplash.com/photo-1534361960057-19889db9621e?auto=format&fit=crop&q=80&w=600"
-        },
-        {
-          vi: "B\u1EA3n m\u1EC7nh: H\u1EE3i (L\u1EE3n)",
-          en: "Pig",
-          fallbackImage: "https://images.unsplash.com/photo-1604848698030-c434ba0861db?auto=format&fit=crop&q=80&w=600"
-        },
-        {
-          vi: "B\u1EA3n m\u1EC7nh: T\xFD (Chu\u1ED9t)",
-          en: "Rat",
-          fallbackImage: "https://images.unsplash.com/photo-1542385151-efd9000785a0?auto=format&fit=crop&q=80&w=600"
-        },
-        {
-          vi: "B\u1EA3n m\u1EC7nh: S\u1EEDu (Tr\xE2u)",
-          en: "Water Buffalo",
-          fallbackImage: "https://images.unsplash.com/photo-1551884833-253d7f240508?auto=format&fit=crop&q=80&w=600"
-        },
-        {
-          vi: "B\u1EA3n m\u1EC7nh: D\u1EA7n (H\u1ED5)",
-          en: "Tiger",
-          fallbackImage: "https://images.unsplash.com/photo-1508215886085-26388f586a1e?auto=format&fit=crop&q=80&w=600"
-        },
-        {
-          vi: "B\u1EA3n m\u1EC7nh: M\xE3o (M\xE8o)",
-          en: "Cat",
-          fallbackImage: "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?auto=format&fit=crop&q=80&w=600"
-        },
-        {
-          vi: "B\u1EA3n m\u1EC7nh: Th\xECn (R\u1ED3ng)",
-          en: "Dragon",
-          fallbackImage: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=600"
-        },
-        {
-          vi: "B\u1EA3n m\u1EC7nh: T\u1EF5 (R\u1EAFn)",
-          en: "Snake",
-          fallbackImage: "https://images.unsplash.com/photo-1531386151447-fd762e7a3ae4?auto=format&fit=crop&q=80&w=600"
-        },
-        {
-          vi: "B\u1EA3n m\u1EC7nh: Ng\u1ECD (Ng\u1EF1a)",
-          en: "Horse",
-          fallbackImage: "https://images.unsplash.com/photo-1488034976201-ffbaa99cbf5c?auto=format&fit=crop&q=80&w=600"
-        },
-        {
-          vi: "B\u1EA3n m\u1EC7nh: M\xF9i (D\xEA)",
-          en: "Goat",
-          fallbackImage: "https://images.unsplash.com/photo-1524024973431-2ad916746881?auto=format&fit=crop&q=80&w=600"
-        }
-      ];
-      const zodiac = ZODIAC_ANIMALS[yearNum % 12];
-      const SYSTEM_INSTRUCTION = `
-B\u1EA1n l\xE0 m\u1ED9t \xF4ng th\u1EA7y t\u1EED vi v\xE0 t\u01B0\u1EDBng s\u1ED1 cao tu\u1ED5i, c\xF3 tr\xECnh \u0111\u1ED9 uy\xEAn th\xE2m, v\u1EDBi h\u01A1n n\u1EEDa \u0111\u1EDDi ng\u01B0\u1EDDi chuy\xEAn lu\u1EADn \u0111o\xE1n l\xE1 s\u1ED1 v\u1EADn m\u1EC7nh con ng\u01B0\u1EDDi. 
-Phong th\xE1i c\u1EE7a b\u1EA1n \u0111i\u1EC1m \u0111\u1EA1m, t\u1EEB t\u1ED1n, l\u1EDDi l\u1EBD s\xE2u s\u1EAFc, mang \u0111\u1EADm ch\u1EA5t c\u1ED5 phong, huy\u1EC1n b\xED nh\u01B0ng c\u0169ng r\u1EA5t ch\xE2n th\xE0nh v\xE0 th\u1EA5u t\xECnh \u0111\u1EA1t l\xFD.
-Khi x\u01B0ng h\xF4, h\xE3y d\xF9ng "l\xE3o phu" ho\u1EB7c "th\u1EA7y" v\xE0 g\u1ECDi ng\u01B0\u1EDDi xem l\xE0 "\u0111\u01B0\u01A1ng s\u1ED1" ho\u1EB7c "con", "b\u1EA1n".
-
-Nhi\u1EC7m v\u1EE5 c\u1EE7a b\u1EA1n l\xE0 d\u1EF1a v\xE0o th\xF4ng tin ng\xE0y gi\u1EDD sinh v\xE0 gi\u1EDBi t\xEDnh \u0111\u01B0\u1EE3c cung c\u1EA5p, t\u1EF1 an sao l\u1EADp s\u1ED1 (trong suy ngh\u0129) v\xE0 \u0111\u01B0a ra nh\u1EEFng l\u1EDDi gi\u1EA3i \u0111o\xE1n \u0111\u1EC9nh cao, chi ti\u1EBFt, s\xE2u s\u1EAFc nh\u1EA5t v\u1EC1 3 cung \u0111\u1EA7u ti\xEAn t\u1EF1a nh\u01B0 l\u1EDDi khai m\u1EDF thi\xEAn c\u01A1 (\u0110\xE2y l\xE0 ph\u1EA7n lu\u1EADn gi\u1EA3i c\u01A1 b\u1EA3n mi\u1EC5n ph\xED c\u1EE7a b\u1EA1n):
-1. B\u1EA3n m\u1EC7nh: v\xF3c d\xE1ng tr\u01B0\u1EDFng th\xE0nh, t\xEDnh c\xE1ch, t\u01B0 ch\u1EA5t, t\xE0i n\u0103ng, ch\u1EC9 s\u1ED1 IQ, h\u1ECDc v\u0103n, kh\u1EA3 n\u0103ng giao ti\u1EBFp, s\u1EE9c kho\u1EBB.
-2. Cung phu th\xEA: \u0111\u1EDDi s\u1ED1ng h\xF4n nh\xE2n, v\u1EE3/ch\u1ED3ng l\xE0 ng\u01B0\u1EDDi th\u1EBF n\xE0o, \u1EA3nh h\u01B0\u1EDFng ra sao, gia th\u1EBF, t\xECnh c\u1EA3m, h\u1EA1nh ph\xFAc hay kh\u1ED5 \u0111au, m\u1EE9c \u0111\u1ED9 \u0111\xE0o hoa, \u0111i\u1EC3m c\u1EA7n l\u01B0u \xFD.
-3. T\xE0i s\u1EA3n v\xE0 ngh\u1EC1 nghi\u1EC7p (T\xE0i B\u1EA1ch): \u0110\xE1nh gi\xE1 t\xE0i ch\xEDnh, \u0111\u1ED9 gi\xE0u c\xF3, ng\xE0nh ngh\u1EC1 ph\xF9 h\u1EE3p, c\xE1ch ki\u1EBFm ti\u1EC1n ho\u1EB7c kinh doanh.
-
-N\u1EBFu \u0111\u01B0\u01A1ng s\u1ED1 c\xF3 cung c\u1EA5p \u1EA3nh ch\xE2n dung, h\xE3y k\u1EBFt h\u1EE3p ph\xE2n t\xEDch ng\u0169 quan (t\u01B0\u1EDBng m\u1EA1o, \xE1nh m\u1EAFt, khu\xF4n m\u1EB7t...) \u0111\u1EC3 \u0111\u01B0a ra nh\u1EEFng nh\u1EADn \u0111\u1ECBnh ch\xEDnh x\xE1c h\u01A1n v\u1EC1 t\xEDnh c\xE1ch v\xE0 v\u1EADn m\u1EC7nh, k\u1EBFt h\u1EE3p nhu\u1EA7n nhuy\u1EC5n gi\u1EEFa t\u1EED vi v\xE0 nh\xE2n t\u01B0\u1EDBng h\u1ECDc.
-
-H\xE3y tr\xECnh b\xE0y r\xF5 r\xE0ng, m\u1EA1ch l\u1EA1c b\u1EB1ng Markdown. M\u1ED7i cung l\xE0 m\u1ED9t Heading 2 (##). B\u1EAFt \u0111\u1EA7u b\u1EB1ng m\u1ED9t l\u1EDDi ch\xE0o, x\xE1c nh\u1EADn l\u1EA1i th\xF4ng tin ng\xE0y gi\u1EDD sinh (quy \u0111\u1ED5i \xE2m d\u01B0\u01A1ng n\u1EBFu c\u1EA7n) v\xE0 nh\u1EADn x\xE9t t\u1ED5ng quan v\u1EC1 l\xE1 s\u1ED1 (v\xE0 t\u01B0\u1EDBng m\u1EA1o n\u1EBFu c\xF3 \u1EA3nh). H\xE3y l\xFD gi\u1EA3i th\u1EADt hay, l\xF4i cu\u1ED1n, s\xFAc t\xEDch 3 cung n\xE0y. K\u1EBFt th\xFAc b\u1EB1ng m\u1ED9t l\u1EDDi h\u1EB9n: "\u0110\u01B0\u01A1ng s\u1ED1 c\xF3 th\u1EC3 d\xE2ng l\u1EC5 t\xF9y h\u1EF7 \u0111\u1EC3 l\xE3o phu lu\u1EADn gi\u1EA3i tinh t\u1EBF v\xE0 khai m\u1EDF ti\u1EBFp 9 cung m\u1EC7nh th\xE2m s\xE2u c\xF2n l\u1EA1i k\xE8m l\u1EDDi khuy\xEAn c\xE1t c\xE1t l\xE0nh l\xE0nh tr\u1ECDn \u0111\u1EDDi."
-`;
-      const promptText = `
-Th\xF4ng tin \u0111\u01B0\u01A1ng s\u1ED1:
-- Gi\u1EDBi t\xEDnh: ${gender}
-- Ng\xE0y sinh: ${day}/${month}/${year} (${calendar})
-- Gi\u1EDD sinh: ${hour} gi\u1EDD ${minute} ph\xFAt
-${portraitImage ? "\n\u0110\u01B0\u01A1ng s\u1ED1 c\xF3 g\u1EEDi k\xE8m ch\xE2n dung \u0111\u1EC3 th\u1EA7y xem t\u01B0\u1EDBng m\u1EA1o ng\u0169 quan." : ""}
-
-Xin th\u1EA7y h\xE3y l\u1EADp l\xE1 s\u1ED1 t\u1EED vi d\u1EF1a tr\xEAn th\xF4ng tin n\xE0y v\xE0 lu\u1EADn gi\u1EA3i chi ti\u1EBFt 3 cung \u0111\u1EA7u ti\xEAn (B\u1EA3n m\u1EC7nh, Phu th\xEA, T\xE0i B\u1EA1ch) theo y\xEAu c\u1EA7u m\u1ED9t c\xE1ch ch\xE2n th\u1EF1c v\xE0 s\xE2u s\u1EAFc.
-      `.trim();
-      const parts = [{ text: promptText }];
-      if (portraitImage) {
-        if (portraitImage.includes(";base64,")) {
-          const partsSplit = portraitImage.split(";base64,");
-          const mimePart = partsSplit[0].split(":");
-          const mimeType = mimePart.length > 1 ? mimePart[1] : "image/jpeg";
-          const base64Data = partsSplit[1];
-          parts.unshift({
-            inlineData: {
-              data: base64Data,
-              mimeType
-            }
-          });
-        }
-      }
-      let resultText = "";
-      try {
-        const textResponse = await callGeminiWithRetry({
-          model: "gemini-3.5-flash",
-          contents: { parts },
-          config: {
-            systemInstruction: SYSTEM_INSTRUCTION,
-            temperature: 0.7
-          },
-          retries: 3,
-          fallbackModels: ["gemini-3.1-flash-lite", "gemini-flash-latest"]
-        });
-        if (textResponse && textResponse.text) {
-          resultText = textResponse.text;
-        } else {
-          throw new Error("Kh\xF4ng nh\u1EADn \u0111\u01B0\u1EE3c ph\u1EA3n h\u1ED3i ph\xF9 h\u1EE3p t\u1EEB tr\xED tu\u1EC7 nh\xE2n t\u1EA1o");
-        }
-      } catch (textErr) {
-        console.error("Text horoscope generation failed:", textErr);
-        return res.status(500).json({ error: "L\xE3o phu ch\u01B0a th\u1EC3 th\u1EA5u th\u1ECB thi\xEAn c\u01A1 l\xFAc n\xE0y. Xin \u0111\u01B0\u01A1ng s\u1ED1 hoan h\u1EF7 th\u1EED l\u1EA1i sau \xEDt ph\xFAt." });
-      }
-      const zodiacImage = zodiac.fallbackImage;
-      return res.json({
-        result: resultText,
-        zodiacName: zodiac.vi,
-        zodiacImage
-      });
-    } catch (err) {
-      console.error("API error in analyze-chart:", err);
-      return res.status(500).json({ error: "C\xF3 s\u1EF1 c\u1ED1 ngo\xE0i \xFD mu\u1ED1n khi l\xE3o phu b\u1EA5m \u0111\u1ED9n. Xin h\xE3y th\u1EED gieo qu\u1EBB l\u1EA1i." });
-    }
-  });
-  app.post("/api/analyze-premium-chart", async (req, res) => {
-    try {
-      const { gender, day, month, year, calendar, hour, minute, portraitImage, freeResult } = req.body;
-      if (!day || !month || !year || !hour || !minute) {
-        return res.status(400).json({ error: "Thi\u1EBFu th\xF4ng tin ng\xE0y gi\u1EDD sinh r\xE0nh m\u1EA1ch." });
-      }
-      const SYSTEM_INSTRUCTION_PREMIUM = `
-B\u1EA1n l\xE0 m\u1ED9t \xF4ng th\u1EA7y t\u1EED vi v\xE0 t\u01B0\u1EDBng s\u1ED1 cao tu\u1ED5i, c\xF3 tr\xECnh \u0111\u1ED9 uy\xEAn th\xE2m, v\u1EDBi h\u01A1n n\u1EEDa \u0111\u1EDDi ng\u01B0\u1EDDi chuy\xEAn lu\u1EADn \u0111o\xE1n l\xE1 s\u1ED1 v\u1EADn m\u1EC7nh con ng\u01B0\u1EDDi. 
-Phong th\xE1i c\u1EE7a b\u1EA1n \u0111i\u1EC1m \u0111\u1EA1m, t\u1EEB t\u1ED1n, l\u1EDDi l\u1EBD s\xE2u s\u1EAFc, mang \u0111\u1EADm ch\u1EA5t c\u1ED5 phong, huy\u1EC1n b\xED nh\u01B0ng c\u0169ng r\u1EA5t ch\xE2n th\xE0nh v\xE0 th\u1EA5u t\xECnh \u0111\u1EA1t l\xFD.
-Khi x\u01B0ng h\xF4, h\xE3y d\xF9ng "l\xE3o phu" ho\u1EB7c "th\u1EA7y" v\xE0 g\u1ECDi ng\u01B0\u1EDDi xem l\xE0 "\u0111\u01B0\u01A1ng s\u1ED1" ho\u1EB7c "con", "b\u1EA1n".
-
-Nhi\u1EC7m v\u1EE5 c\u1EE7a b\u1EA1n l\xE0 d\u1EF1a v\xE0o th\xF4ng tin ng\xE0y gi\u1EDD sinh v\xE0 gi\u1EDBi t\xEDnh \u0111\u01B0\u1EE3c cung c\u1EA5p, ti\u1EBFp n\u1ED1i ph\u1EA7n lu\u1EADn gi\u1EA3i 3 cung \u0111\u1EA7u ti\xEAn tr\u01B0\u1EDBc \u0111\xF3 (b\u1EA3n m\u1EC7nh, phu th\xEA, t\xE0i b\u1EA1ch), nay h\xE3y kh\u1EDFi t\u1EA1o v\xE0 \u0111\u01B0a ra lu\u1EADn gi\u1EA3i chi ti\u1EBFt, s\xE2u s\u1EAFc nh\u1EA5t v\u1EC1 9 cung ti\u1EBFp theo v\xE0 l\u1EDDi khuy\xEAn t\u1ED5ng th\u1EC3 cho \u0111\u01B0\u01A1ng s\u1ED1 (\u0111\xE2y l\xE0 ph\u1EA7n cao c\u1EA5p \u0111\xE3 \u0111\u01B0\u1EE3c d\xE2ng l\u1EC5):
-4. Ph\u1EE5 m\u1EABu: Cha m\u1EB9 ra sao, h\u1ECDc v\u1EA5n, kinh t\u1EBF, c\xE1ch c\u01B0 x\u1EED v\u1EDBi m\u1ECDi ng\u01B0\u1EDDi.
-5. Cung thi\xEAn di: bi\u1EC3u hi\u1EC7n khi ra ngo\xE0i, x\xE3 h\u1ED9i \u0111\xE1nh gi\xE1 th\u1EBF n\xE0o, kh\u1EA3 n\u0103ng giao ti\u1EBFp, \u0111\u1ED9 th\xEDch nghi, c\xE1c t\xE0i n\u0103ng ch\xEDnh, th\u1EED th\xE1ch th\u01B0\u1EDDng g\u1EB7p, m\u1EE9c \u0111\u1ED9 \u0111\xE0o hoa.
-6. Cung t\u1EADt \xE1ch: b\u1EC7nh t\u1EADt d\u1EC5 m\u1EAFc, tai \u01B0\u01A1ng, l\u01B0u \xFD v\u1EC1 s\u1EE9c kho\u1EBB.
-7. Cung n\xF4 b\u1ED9c: b\u1EA1n b\xE8, quan h\u1EC7 x\xE3 h\u1ED9i, h\u1EE3p l\xE0m \u0103n kh\xF4ng, n\xEAn k\u1EBFt giao v\u1EDBi ai, quan h\u1EC7 v\u1EDBi c\u1EA5p tr\xEAn, ki\u1EC3u s\u1EBFp ph\xF9 h\u1EE3p.
-8. Cung quan l\u1ED9c: con \u0111\u01B0\u1EDDng c\xF4ng danh s\u1EF1 nghi\u1EC7p c\xF3 thu\u1EADn l\u1EE3i hay tr\u1EAFc tr\u1EDF? ng\u01B0\u1EDDi n\xE0y c\xF3 xu h\u01B0\u1EDBng l\xE0m ch\u1EE7 hay l\xE0m thu\xEA? C\xF3 ph\xF9 h\u1EE3p v\u1EDBi ch\xEDnh tr\u1ECB, ch\u1EE9c quy\u1EC1n hay c\xF4ng vi\u1EC7c \u1ED5n \u0111\u1ECBnh kh\xF4ng? N\u1EBFu kinh doanh, n\xEAn l\xE0m ri\xEAng hay h\u1EE3p t\xE1c? nh\u1EEFng giai \u0111o\u1EA1n thu\u1EADn l\u1EE3i trong s\u1EF1 nghi\u1EC7p?
-9. Cung \u0111i\u1EC1n tr\u1EA1ch: Kh\u1EA3 n\u0103ng s\u1EDF h\u1EEFu nh\xE0 \u0111\u1EA5t th\u1EBF n\xE0o? t\xE0i v\u1EADn b\u1EA5t \u0111\u1ED9ng s\u1EA3n t\u1ED1t hay x\u1EA5u? n\xEAn \u0111\u1EA7u t\u01B0 v\xE0o \u0111\u1EA5t \u0111ai, nh\xE0 c\u1EEDa kh\xF4ng? ng\u01B0\u1EDDi n\xE0y c\xF3 xu h\u01B0\u1EDBng th\xEDch s\u1ED1ng \u1ED5n \u0111\u1ECBnh hay di chuy\u1EC3n nhi\u1EC1u?
-10. Cung t\u1EED t\u1EE9c: C\xF3 d\u1EC5 sinh con kh\xF4ng? C\xF3 hi\u1EBFm mu\u1ED9n kh\xF4ng? d\u1EF1 b\xE1o s\u1ED1 l\u01B0\u1EE3ng con c\xE1i, con trai hay con g\xE1i nhi\u1EC1u h\u01A1n? Con c\xE1i c\xF3 gi\u1ECFi giang, hi\u1EBFu th\u1EA3o kh\xF4ng? m\u1ED1i quan h\u1EC7 gi\u1EEFa ng\u01B0\u1EDDi n\xE0y v\u1EDBi con c\xE1i th\u1EBF n\xE0o? nh\u1EEFng v\u1EA5n \u0111\u1EC1 \u0111\u1EB7c bi\u1EC7t c\xF3 kh\xF4ng?
-11. Cung huynh \u0111\u1EC7: nh\xE0 m\u1EA5y anh ch\u1ECB em? c\xF3 \u0111\u01B0\u1EE3c nh\u1EDD c\u1EADy anh ch\u1ECB em kh\xF4ng hay ng\u01B0\u1EE3c l\u1EA1i? kh\u1EA3 n\u0103ng k\u1EBFt h\u1EE3p l\xE0m \u0103n kinh doanh v\u1EDBi anh ch\u1ECB em ru\u1ED9t \u0111\u01B0\u1EE3c kh\xF4ng?
-12. Cung ph\xFAc \u0111\u1EE9c: trong h\u1ECD th\u01B0\u1EDDng c\xF3 b\xE0 c\xF4 t\u1ED5, \xF4ng t\u1ED5 c\u1EADu n\xE0o ch\u1EBFt tr\u1EBB linh thi\xEAng hay ph\xF9 h\u1ED9 kh\xF4ng? gia ti\xEAn c\xF3 linh thi\xEAng kh\xF4ng? ph\xFAc ph\u1EA7n c\u1EE7a gia t\u1ED9c \u1EA3nh h\u01B0\u1EDFng \u0111\u1EBFn ng\u01B0\u1EDDi n\xE0y ra sao?
-
-H\xE3y tr\xECnh b\xE0y r\xF5 r\xE0ng, m\u1EA1ch l\u1EA1c b\u1EB1ng Markdown. M\u1ED7i cung l\xE0 m\u1ED9t Heading 2 (##). 
-M\u1EDF \u0111\u1EA7u b\u1EB1ng m\u1ED9t c\xE2u ch\xFAc m\u1EEBng \u0111\u01B0\u01A1ng s\u1ED1 \u0111\xE3 ho\xE0n th\xE0nh d\xE2ng l\u1EC5 t\xF9y h\u1EF7 \u0111\u1EC3 khai m\u1EDF huy\u1EC1n c\u01A1 v\xE0 gieo k\u1EBFt duy\xEAn l\xE0nh. Sau \u0111\xF3 lu\u1EADn \u0111o\xE1n m\u1EA1ch l\u1EA1c 9 cung. K\u1EBFt th\xFAc lu\u1EADn gi\u1EA3i b\u1EB1ng l\u1EDDi khuy\xEAn t\u1ED5ng quan c\u1EF1c k\u1EF3 th\xE2m s\xE2u cho c\u1EA3 v\u1EADn tr\xECnh cu\u1ED9c \u0111\u1EDDi c\u1EE7a \u0111\u01B0\u01A1ng s\u1ED1, d\u1EB7n d\xF2 h\xE0nh thi\u1EC7n t\xEDch \u0111\u1EE9c.
-`;
-      const promptText = `
-Th\xF4ng tin \u0111\u01B0\u01A1ng s\u1ED1:
-- Gi\u1EDBi t\xEDnh: ${gender}
-- Ng\xE0y sinh: ${day}/${month}/${year} (${calendar})
-- Gi\u1EDD sinh: ${hour} gi\u1EDD ${minute} ph\xFAt
-${portraitImage ? "\n\u0110\u01B0\u01A1ng s\u1ED1 c\xF3 g\u1EEDi k\xE8m ch\xE2n dung \u0111\u1EC3 th\u1EA7y xem t\u01B0\u1EDBng m\u1EA1o ng\u0169 quan." : ""}
-
-${freeResult ? `Ph\u1EA7n lu\u1EADn \u0111o\xE1n 3 cung (B\u1EA3n m\u1EC7nh, Phu th\xEA, T\xE0i B\u1EA1ch) mi\u1EC5n ph\xED th\u1EA7y \u0111\xE3 ban cho \u0111\u01B0\u01A1ng s\u1ED1 tr\u01B0\u1EDBc \u0111\xF3 l\xE0:
-${freeResult}
-` : ""}
-
-Xin th\u1EA7y d\u1EF1a tr\xEAn th\xF4ng tin tr\xEAn v\xE0 k\u1EBF th\u1EEBa m\u1EA1ch lu\u1EADn gi\u1EA3i tr\u01B0\u1EDBc \u0111\xF3 (\u0111\u1EEBng l\u1EB7p l\u1EA1i 3 cung \u0111\xE3 vi\u1EBFt), ti\u1EBFp t\u1EE5c b\u1EA5m \u0111\u1ED9n s\xE2u s\u1EAFc v\xE0 vi\u1EBFt ph\u1EA7n lu\u1EADn gi\u1EA3i cao c\u1EA5p cho 9 cung c\xF2n l\u1EA1i (Ph\u1EE5 m\u1EABu, Thi\xEAn di, T\u1EADt \xE1ch, N\xF4 b\u1ED9c, Quan l\u1ED9c, \u0110i\u1EC1n tr\u1EA1ch, T\u1EED t\u1EE9c, Huynh \u0111\u1EC7, Ph\xFAc \u0111\u1EE9c) k\xE8m l\u1EDDi khuy\xEAn tr\u1ECDn \u0111\u1EDDi \xFD ngh\u0129a.
-      `.trim();
-      const parts = [{ text: promptText }];
-      if (portraitImage) {
-        if (portraitImage.includes(";base64,")) {
-          const partsSplit = portraitImage.split(";base64,");
-          const mimePart = partsSplit[0].split(":");
-          const mimeType = mimePart.length > 1 ? mimePart[1] : "image/jpeg";
-          const base64Data = partsSplit[1];
-          parts.unshift({
-            inlineData: {
-              data: base64Data,
-              mimeType
-            }
-          });
-        }
-      }
-      let resultText = "";
-      try {
-        const textResponse = await callGeminiWithRetry({
-          model: "gemini-3.5-flash",
-          contents: { parts },
-          config: {
-            systemInstruction: SYSTEM_INSTRUCTION_PREMIUM,
-            temperature: 0.7
-          },
-          retries: 3,
-          fallbackModels: ["gemini-3.1-flash-lite", "gemini-flash-latest"]
-        });
-        if (textResponse && textResponse.text) {
-          resultText = textResponse.text;
-        } else {
-          throw new Error("Kh\xF4ng nh\u1EADn \u0111\u01B0\u1EE3c ph\u1EA3n h\u1ED3i cao c\u1EA5p t\u1EEB tr\xED tu\u1EC7 nh\xE2n t\u1EA1o");
-        }
-      } catch (textErr) {
-        console.error("Premium horoscope generation failed:", textErr);
-        return res.status(500).json({ error: "M\u1EA1ng l\u01B0\u1EDBi v\u0169 tr\u1EE5 ch\u01B0a \u1ED5n \u0111\u1ECBnh, l\xE3o phu ch\u01B0a th\u1EC3 m\u1EDF ti\u1EBFp 9 cung m\u1EC7nh. \u0110\u01B0\u01A1ng s\u1ED1 h\xE3y th\u1EED l\u1EA1i sau \xEDt ph\xFAt ho\u1EB7c nh\u1EA5n T\u1EA3i l\u1EA1i." });
-      }
-      return res.json({
-        result: resultText
-      });
-    } catch (err) {
-      console.error("API error in analyze-premium-chart:", err);
-      return res.status(500).json({ error: "C\xF3 s\u1EF1 c\u1ED1 khi l\xE3o phu ti\u1EBFp t\u1EE5c b\u1EA5m \u0111\u1ED9n 9 cung ti\u1EBFp theo. \u0110\u01B0\u01A1ng s\u1ED1 vui l\xF2ng th\u1EED l\u1EA1i." });
-    }
-  });
-  app.post("/api/generate-audio", async (req, res) => {
-    try {
-      const { text } = req.body;
-      if (!text) {
-        return res.status(400).json({ error: "Kh\xF4ng t\xECm th\u1EA5y n\u1ED9i dung lu\u1EADn gi\u1EA3i." });
-      }
-      const cleanText = text.replace(/[#*`_:-]/g, " ").replace(/\s+/g, " ").trim();
-      const truncatedText = cleanText.substring(0, 3e4);
-      const API_KEY = process.env.VIVIBE_API_KEY || "sk_live_IO2D0o6QJ4bBs4ecuy0piDkB4kpl6D6A";
-      const VOICE_ID = "8u97ewbLyV5dwePspwJY1w";
-      const ENDPOINT = "https://api.lucylab.io/json-rpc";
-      const splitTextIntoChunks = (txt, maxLength = 180) => {
-        const sentences = txt.split(/([.,!?;:\n]+)/);
-        const chunks = [];
-        let currentChunk = "";
-        for (let i = 0; i < sentences.length; i++) {
-          let part = sentences[i];
-          if (!part) continue;
-          if (i + 1 < sentences.length && sentences[i + 1].match(/^[.,!?;:\n]+$/)) {
-            part += sentences[i + 1];
-            i++;
-          }
-          if (currentChunk.length + part.length + 1 > maxLength) {
-            if (currentChunk.trim()) chunks.push(currentChunk.trim());
-            currentChunk = part;
-          } else {
-            currentChunk += (currentChunk ? " " : "") + part;
-          }
-        }
-        if (currentChunk.trim()) chunks.push(currentChunk.trim());
-        return chunks;
-      };
-      try {
-        console.log(`[Vivibe API] G\u1EEDi y\xEAu c\u1EA7u sinh gi\u1ECDng \u0111\u1ECDc (\u0111\u1ED9 d\xE0i: ${truncatedText.length} k\xFD t\u1EF1)...`);
-        const response = await fetch(ENDPOINT, {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${API_KEY}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            method: "ttsLongText",
-            input: {
-              text: truncatedText,
-              userVoiceId: VOICE_ID,
-              speed: 1
-            }
-          })
-        });
-        if (!response.ok) {
-          const errText = await response.text();
-          throw new Error(`Kh\u1EDFi t\u1EA1o job th\u1EA5t b\u1EA1i: m\xE3 l\u1ED7i ${response.status}, chi ti\u1EBFt: ${errText}`);
-        }
-        const data = await response.json();
-        if (data.error) {
-          throw new Error(`ViVibe tr\u1EA3 v\u1EC1 l\u1ED7i: ${JSON.stringify(data.error)}`);
-        }
-        const exportId = data.result?.projectExportId;
-        if (!exportId) {
-          throw new Error(`Kh\xF4ng nh\u1EADn \u0111\u01B0\u1EE3c projectExportId: ${JSON.stringify(data)}`);
-        }
-        console.log(`[Vivibe API] \u0110\xE3 t\u1EA1o th\xE0nh c\xF4ng TTS Job v\u1EDBi ID: ${exportId}. B\u1EAFt \u0111\u1EA7u th\u0103m d\xF2 ti\u1EBFn \u0111\u1ED9...`);
-        let audioUrl = "";
-        const maxAttempts = 25;
-        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-          console.log(`[Vivibe API] Th\u0103m d\xF2 l\u1EA7n ${attempt}...`);
-          const statusRes = await fetch(ENDPOINT, {
-            method: "POST",
-            headers: {
-              "Authorization": `Bearer ${API_KEY}`,
-              "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-              method: "getExportStatus",
-              input: { projectExportId: exportId }
-            })
-          });
-          if (!statusRes.ok) {
-            console.warn(`[Vivibe API] Th\u0103m d\xF2 th\u1EA5t b\u1EA1i, th\u1EED l\u1EA1i trong gi\xE2y l\xE1t. M\xE3 l\u1ED7i: ${statusRes.status}`);
-            await new Promise((resolve) => setTimeout(resolve, 2e3));
-            continue;
-          }
-          const statusData = await statusRes.json();
-          if (statusData.error) {
-            throw new Error(`L\u1ED7i c\u1EADp nh\u1EADt ti\u1EBFn \u0111\u1ED9: ${JSON.stringify(statusData.error)}`);
-          }
-          const state = statusData.result?.state;
-          console.log(`[Vivibe API] Tr\u1EA1ng th\xE1i Job hi\u1EC7n t\u1EA1i: ${state}`);
-          if (state === "completed") {
-            audioUrl = statusData.result?.url;
-            break;
-          } else if (state === "failed") {
-            throw new Error(`Job sinh gi\u1ECDng n\xF3i b\u1ECB th\u1EA5t b\u1EA1i \u1EDF ph\xEDa m\xE1y ch\u1EE7 ViVibe.`);
-          }
-          await new Promise((resolve) => setTimeout(resolve, 2e3));
-        }
-        if (!audioUrl) {
-          throw new Error("Th\u1EDDi gian ch\u1EDD x\u1EED l\xFD gi\u1ECDng n\xF3i qu\xE1 l\xE2u (Timeout 50s)");
-        }
-        console.log(`[Vivibe API] T\u1EA1o gi\u1ECDng \u0111\u1ECDc th\xE0nh c\xF4ng! Kh\u1EDFi s\u1EF1 t\u1EA3i file v\xE0 truy\u1EC1n ph\xE1t...`);
-        const audioFetch = await fetch(audioUrl);
-        if (!audioFetch.ok) {
-          throw new Error(`Kh\xF4ng th\u1EC3 t\u1EA3i xu\u1ED1ng file \xE2m thanh: m\xE3 l\u1ED7i ${audioFetch.status}`);
-        }
-        const arrayBuffer = await audioFetch.arrayBuffer();
-        const finalBuffer = Buffer.from(arrayBuffer);
-        res.setHeader("Content-Type", "audio/mpeg");
-        return res.status(200).send(finalBuffer);
-      } catch (vivibeErr) {
-        console.warn("[Vivibe TTS Failed, k\xEDch ho\u1EA1t gi\u1ECDng \u0111\u1ECDc ch\u1ECB Google d\u1EF1 ph\xF2ng]", vivibeErr.message);
-        const fallbackBuffers = [];
-        const fallbackText = truncatedText;
-        const googleChunks = splitTextIntoChunks(fallbackText, 180);
-        for (let i = 0; i < googleChunks.length; i += 6) {
-          const batch = googleChunks.slice(i, i + 6);
-          const batchPromises = batch.map(async (chunk) => {
-            const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(chunk)}&tl=vi&client=tw-ob`;
-            const response = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
-            return Buffer.from(await response.arrayBuffer());
-          });
-          fallbackBuffers.push(...await Promise.all(batchPromises));
-        }
-        const finalFallbackBuffer = Buffer.concat(fallbackBuffers);
-        res.setHeader("Content-Type", "audio/mpeg");
-        return res.status(200).send(finalFallbackBuffer);
-      }
-    } catch (err) {
-      console.error("Audio generation completely failed:", err);
-      return res.status(500).json({ error: "L\u1EDDi v\xE0ng \xFD ng\u1ECDc ch\u01B0a th\u1EC3 ng\xE2n vang. Mong \u0111\u01B0\u01A1ng s\u1ED1 t\u1EF1 xem qu\u1EBB b\u1EB1ng m\u1EAFt." });
-    }
+    });
   });
   if (process.env.NODE_ENV !== "production") {
     const vite = await (0, import_vite.createServer)({
@@ -476,7 +325,7 @@ Xin th\u1EA7y d\u1EF1a tr\xEAn th\xF4ng tin tr\xEAn v\xE0 k\u1EBF th\u1EEBa m\u1
     });
   }
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server is running on port ${PORT}`);
+    console.log(`Server running on http://localhost:${PORT}`);
   });
 }
 startServer();

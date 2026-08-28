@@ -1,10 +1,6 @@
 {
-  "name": "Thầy Bảy Chợ Lớn",
-  "description": "Ngồi xuống uống miếng bánh ăn miếng trà nghe thầy phán.",
-  "requestFramePermissions": [
-    "camera"
-  ],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
+  "name": "Thiết Kế Ảnh Cổng Cưới",
+  "description": "Ứng dụng thiết kế ảnh cổng cưới, bảng chào mừng với nhiều mẫu khung ảnh collage, tùy chỉnh chữ nghệ thuật và xuất file in chất lượng cao.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
